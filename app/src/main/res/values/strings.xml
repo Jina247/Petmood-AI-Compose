@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">PetMood AI</string>
+    <string name="history_title">Scan History</string>
+    <string name="history_empty_title">No scans yet. Try your first scan!</string>
+    <string name="history_empty_description">Record dynamic video of your pet to detect emotional indexes and symptoms instantly with our AI model.</string>
+    <string name="history_empty_paw_content_description">Empty history paw</string>
+    <string name="history_date_today">Today</string>
+    <string name="history_date_yesterday">Yesterday</string>
+    <string name="history_date_previous">Previous Scans</string>
+    <string name="history_loading">Loading history…</string>
+</resources>

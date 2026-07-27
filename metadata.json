@@ -1,0 +1,6 @@
+{
+  "name": "PetMood AI",
+  "description": "Helps first-time pet owners detect their pet's mood and illness signs using AI-powered analysis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
