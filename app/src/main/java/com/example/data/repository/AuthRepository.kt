@@ -24,6 +24,7 @@ class AuthRepository {
             api.register(RegisterRequest(email, name, password))
             val loginResponse = api.login(LoginRequest(email, password))
             SessionManager.saveToken(loginResponse.accessToken)
+            SessionManager.saveUserInfo(email, name)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -32,13 +33,14 @@ class AuthRepository {
 
     fun logout() {
         SessionManager.clearToken()
+        SessionManager.clearSession()
     }
 
     fun getCurrentUserEmail(): String {
-        return SessionManager.getToken() // placeholder for now
+        return SessionManager.getUserEmail()
     }
 
     fun getCurrentUserName(): String {
-        return "" // placeholder for now
+        return SessionManager.getUserName()
     }
 }

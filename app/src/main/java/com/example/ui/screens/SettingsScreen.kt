@@ -153,7 +153,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "$petType • $petAge old",
+                            text = "$petType • $petAge year(s) old",
                             color = TextPrimaryDarkBrown.copy(alpha = 0.6f),
                             fontSize = 13.sp
                         )

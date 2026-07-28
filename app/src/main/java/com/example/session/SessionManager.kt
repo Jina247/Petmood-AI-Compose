@@ -7,6 +7,8 @@ import androidx.core.content.edit
 object SessionManager {
     private const val PREF_NAME = "petmood_prefs"
     private const val KEY_TOKEN = "token"
+    private const val KEY_EMAIL = "email"
+    private const val KEY_NAME = "name"
 
     private lateinit var prefs: SharedPreferences
 
@@ -16,6 +18,18 @@ object SessionManager {
 
     fun saveToken(token: String) {
         prefs.edit { putString(KEY_TOKEN, token) }
+    }
+    fun saveUserInfo(email: String, name: String) {
+        prefs.edit {
+            putString(KEY_EMAIL, email)
+            putString(KEY_NAME, name)
+        }
+    }
+    fun getUserName(): String {
+        return prefs.getString(KEY_NAME, "") ?: ""
+    }
+    fun getUserEmail(): String {
+        return prefs.getString(KEY_EMAIL, "") ?: ""
     }
 
     fun getToken(): String {
