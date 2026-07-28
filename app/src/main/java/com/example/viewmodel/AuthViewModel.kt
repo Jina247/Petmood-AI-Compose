@@ -17,8 +17,8 @@ sealed interface AuthUiState {
 }
 
 class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
-
-    val isLoggedIn = SessionManager.isLoggedIn()
+    private val _isLoggedIn = MutableStateFlow(SessionManager.isLoggedIn())
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
     private val _uiState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
@@ -53,6 +53,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
             val result = authRepository.login(email, password)
             if (result.isSuccess) {
                 _uiState.value = AuthUiState.Success
+                _isLoggedIn.value = true
             } else {
                 _uiState.value = AuthUiState.Error(
                     result.exceptionOrNull()?.message ?: "An unexpected error occurred"
@@ -92,6 +93,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
     fun logout() {
         authRepository.logout()
+        _isLoggedIn.value = false
         // Reset view state
         loginEmail.value = ""
         loginPassword.value = ""

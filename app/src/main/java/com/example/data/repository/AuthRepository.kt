@@ -22,6 +22,8 @@ class AuthRepository {
     suspend fun register(email: String, name: String, password: String): Result<Unit> {
         return try {
             api.register(RegisterRequest(email, name, password))
+            val loginResponse = api.login(LoginRequest(email, password))
+            SessionManager.saveToken(loginResponse.accessToken)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

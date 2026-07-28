@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 val currentRoute = navBackStackEntry?.destination?.route
 
                 // Verify login state statically
-                val isLoggedIn = authViewModel.isLoggedIn
+                val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
                 val petProfile by scanViewModel.petProfile.collectAsState()
 
                 // Keep HistoryViewModel synced with current pet

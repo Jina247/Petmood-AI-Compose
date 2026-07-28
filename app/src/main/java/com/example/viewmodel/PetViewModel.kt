@@ -173,17 +173,17 @@ class PetViewModel(private val repository: PetRepository) : ViewModel() {
             _uiState.value = PetUiState.Loading
             try {
                 val existing = _selectedPet.value
-                if (existing == null) {
-//                    // pet exists → update it
-//                    val updated = repository.updatePet(
-//                        petId = existing.id,
-//                        name = name,
-//                        age = age,
-//                        petType = type,
-//                        gender = gender
-//                    )
-//                    _selectedPet.value = updated
-//                } else {
+                if (existing != null) {
+                    // pet exists → update it
+                    val updated = repository.updatePet(
+                        petId = existing.id ,
+                        name = name,
+                        age = age,
+                        petType = type,
+                        gender = gender
+                    )
+                    _selectedPet.value = updated
+                } else {
                     // no pet yet → create new one
                     val created = repository.createPet(
                         name = name,
