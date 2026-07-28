@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
             .build()
 
         val apiService = Retrofit.Builder()
-            .baseUrl("https://petmood-ai-production.up.railway.app/")
+            .baseUrl("https://petmoodai-dsa4f0bybtb8fzeh.eastasia-01.azurewebsites.net")
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()

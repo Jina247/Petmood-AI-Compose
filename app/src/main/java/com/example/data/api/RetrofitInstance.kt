@@ -22,7 +22,7 @@ object RetrofitInstance {
 
     val api: ApiService by lazy {
         Retrofit.Builder()
-            .baseUrl("https://petmood-ai-production.up.railway.app/")
+            .baseUrl("https://petmoodai-dsa4f0bybtb8fzeh.eastasia-01.azurewebsites.net")
             .addConverterFactory(GsonConverterFactory.create(gson))
             .client(client)
             .build()
