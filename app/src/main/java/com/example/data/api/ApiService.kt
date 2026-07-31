@@ -2,7 +2,7 @@ package com.example.data.api
 
 import com.example.data.model.PetProfile
 import com.example.data.model.ScanResult
-import com.google.gson.annotations.SerializedName
+import com.squareup.moshi.Json
 import okhttp3.MultipartBody
 import retrofit2.http.*
 
@@ -12,9 +12,11 @@ data class LoginRequest(
 )
 
 data class LoginResponse(
-    @SerializedName("access_token")
+    val name: String,
+    val email: String,
+    @Json(name = "access_token")
     val accessToken: String,
-    @SerializedName("token_type")
+    @Json(name = "token_type")
     val tokenType: String = "bearer"
 )
 
@@ -25,7 +27,7 @@ data class RegisterRequest(
 )
 
 data class RegisterResponse(
-    @SerializedName("user_id")
+    @Json(name = "user_id")
     val userId: String,
     val name: String,
     val email: String
@@ -41,12 +43,12 @@ data class PetCreate(
 data class ScanResponse(
     val id: String,
     val status: String,
-    @SerializedName("mood_result")
+    @Json(name = "mood_result")
     val moodResult: String?,
     val confidence: Double?,
-    @SerializedName("pet_id")
+    @Json(name = "pet_id")
     val petId: String,
-    @SerializedName("created_at")
+    @Json(name = "created_at")
     val createdAt: String
 )
 
@@ -57,6 +59,9 @@ interface ApiService {
 
     @POST("auth/register")
     suspend fun register(@Body request: RegisterRequest): RegisterResponse
+
+    @GET("users/me")
+    suspend fun getCurrentUserInfo(): RegisterResponse
 
     @GET("pets/")
     suspend fun getPets(): List<PetProfile>

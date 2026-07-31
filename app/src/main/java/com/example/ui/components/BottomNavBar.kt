@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -58,7 +59,11 @@ fun BottomNavBar(
             .navigationBarsPadding()
     ) {
         // Soft separator matching dark brown
-        Divider(color = TextPrimaryDarkBrown.copy(alpha = 0.15f), thickness = 1.dp)
+        HorizontalDivider(
+            Modifier,
+            thickness = 1.dp,
+            color = TextPrimaryDarkBrown.copy(alpha = 0.15f)
+        )
 
         Row(
             modifier = Modifier

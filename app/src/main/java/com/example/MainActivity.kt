@@ -203,6 +203,9 @@ class MainActivity : ComponentActivity() {
                                             popUpTo("scan") { saveState = true }
                                         }
                                     }
+                                },
+                                onClickBack = {
+                                    navController.popBackStack()
                                 }
                             )
                         }
@@ -250,6 +253,9 @@ class MainActivity : ComponentActivity() {
                             HistoryScreen(
                                 historyViewModel = historyViewModel,
                                 scanViewModel = scanViewModel,
+                                onClickBack = {
+                                    navController.popBackStack()
+                                },
                                 onNavigateToDetails = {
                                     if (!isFinishing) {
                                         navController.navigate("results") {
@@ -267,6 +273,9 @@ class MainActivity : ComponentActivity() {
                                 scanViewModel = scanViewModel,
                                 onEditPetProfile = {
                                     if (!isFinishing) navController.navigate("pet_profile_setup")
+                                },
+                                onClickBack = {
+                                    navController.popBackStack()
                                 },
                                 onLogout = {
                                     authViewModel.logout()

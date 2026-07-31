@@ -25,6 +25,7 @@ import com.example.ui.theme.WarmCreamBackground
 import com.example.viewmodel.ScanUiState
 import com.example.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun AnalysingScreen(
@@ -43,7 +44,7 @@ fun AnalysingScreen(
 
     LaunchedEffect(Unit) {
         while (progressVal < 0.95f) {
-            delay(150)
+            delay(4000.milliseconds)
             progressVal += 0.05f
         }
     }
@@ -51,7 +52,7 @@ fun AnalysingScreen(
     LaunchedEffect(scanUiState) {
         if (scanUiState is ScanUiState.Success) {
             progressVal = 1.0f
-            delay(300)
+            delay(4000.milliseconds)
             onAnalysisFinished()
         } else if (scanUiState is ScanUiState.Error) {
             onAnalysisFailed((scanUiState as ScanUiState.Error).message)

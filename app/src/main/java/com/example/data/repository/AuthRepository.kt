@@ -13,6 +13,8 @@ class AuthRepository {
         return try {
             val response = api.login(LoginRequest(email, password))
             SessionManager.saveToken(response.accessToken)  // save token
+            val userInfo = api.getCurrentUserInfo()
+            SessionManager.saveUserInfo(userInfo.email, userInfo.name)
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -19,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -39,20 +38,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.ui.theme.CardSurfaceCream
 import com.example.ui.theme.PrimaryButtonYellow
 import com.example.ui.theme.TextPrimaryDarkBrown
 import com.example.ui.theme.WarmCreamBackground
 import com.example.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun ScannerScreen(
     viewModel: ScanViewModel,
     onNavigateToAnalysing: () -> Unit,
+    onClickBack:() -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -84,13 +83,13 @@ fun ScannerScreen(
 
     // Recording states
     var isRecording by remember { mutableStateOf(false) }
-    var recordingSeconds by remember { mutableStateOf(0) }
+    var recordingSeconds by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(isRecording) {
         if (isRecording) {
             recordingSeconds = 0
             while (recordingSeconds < 5) {
-                delay(1000)
+                delay(1000.milliseconds)
                 recordingSeconds++
             }
             // Finished recording! Create mock temp video file and process
@@ -129,6 +128,11 @@ fun ScannerScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
+            IconButton(onClick = onClickBack) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBackIosNew,
+                    contentDescription = "Back")
+            }
             // Title
             Text(
                 text = "Smart Scanner",

@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Pets
@@ -35,6 +36,7 @@ import com.example.viewmodel.ScanViewModel
 fun SettingsScreen(
     authViewModel: AuthViewModel,
     scanViewModel: ScanViewModel,
+    onClickBack:() -> Unit,
     onEditPetProfile: () -> Unit,
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
@@ -75,6 +77,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(WarmCreamBackground)
     ) {
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -84,6 +87,15 @@ fun SettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
+            IconButton(onClick = onClickBack) {
+                Icon(
+                    imageVector = Icons.Default.ArrowBackIosNew,
+                    contentDescription = "Back",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Start)
+                )
+            }
             // Screen Header
             Text(
                 text = "Settings",
