@@ -171,10 +171,7 @@ fun HomeScreen(
             // Scan Now prominent CTA
             item {
                 Button(
-                    onClick = { 
-                        petProfile?.id?.let { scanViewModel.setPetId(it) }
-                        onNavigateToScan() 
-                    },
+                    onClick = { onNavigateToScan() },
                     modifier = Modifier
                         .testTag("scan_now_cta")
                         .fillMaxWidth()

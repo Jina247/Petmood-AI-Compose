@@ -2,6 +2,8 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -42,6 +44,7 @@ import com.example.ui.theme.CardSurfaceCream
 import com.example.ui.theme.PrimaryButtonYellow
 import com.example.ui.theme.TextPrimaryDarkBrown
 import com.example.ui.theme.WarmCreamBackground
+import com.example.viewmodel.ScanUiState
 import com.example.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
 import java.io.File
@@ -78,6 +81,25 @@ fun ScannerScreen(
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
             permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    val petProfile by viewModel.petProfile.collectAsState()
+    val scanUiState by viewModel.scanUiState.collectAsState()
+    val isScanInFlight = scanUiState is ScanUiState.Uploading || scanUiState is ScanUiState.Analysing
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val petId = petProfile?.id
+        if (petId == null) {
+            Toast.makeText(
+                context, "We couldn't find your pet profile. Please set up your pet first.", Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            viewModel.startScan(petId, uri, context)
+            onNavigateToAnalysing()
         }
     }
 
@@ -284,26 +306,34 @@ fun ScannerScreen(
                 modifier = Modifier
                     .testTag("gallery_upload_option")
                     .clip(RoundedCornerShape(12.dp))
-                    .clickable {
-                        // Immediately simulate file analysis from gallery
-                        val mockFile = File(context.cacheDir, "gallery_video.mp4")
-                        mockFile.createNewFile()
-                        viewModel.startAnalysis(mockFile)
-                        onNavigateToAnalysing()
+                    .clickable(enabled = !isScanInFlight) {
+                        galleryLauncher.launch("video/*")
                     }
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.PhotoLibrary,
-                    contentDescription = "Gallery upload icon",
-                    tint = TextPrimaryDarkBrown,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (isScanInFlight) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = TextPrimaryDarkBrown
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.PhotoLibrary,
+                        contentDescription = "Gallery upload icon",
+                        tint = TextPrimaryDarkBrown,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Upload existing video",
-                    color = TextPrimaryDarkBrown,
+                    text = when (scanUiState) {
+                        is ScanUiState.Uploading -> "Uploading video…"
+                        is ScanUiState.Analysing -> "Analysing…"
+                        else -> "Upload existing video"
+                    },
+                    color = TextPrimaryDarkBrown.copy(alpha = if (isScanInFlight) 0.6f else 1f),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium

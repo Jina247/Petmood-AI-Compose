@@ -27,11 +27,12 @@ class HistoryViewModel(private val scanRepository: ScanRepository) : ViewModel()
                 emit(null)
                 _uiState.value = HistoryUIState.Empty
             } else {
-                try {
-                    val results = scanRepository.getScanHistory(id)
+                val result = scanRepository.getScanHistory(id)
+                if (result.isSuccess) {
+                    val results = result.getOrThrow()
                     emit(results)
                     _uiState.value = HistoryUIState.Success(results)
-                } catch (e: Exception) {
+                } else {
                     emit(null)
                     _uiState.value = HistoryUIState.Empty
                 }
@@ -49,12 +50,8 @@ class HistoryViewModel(private val scanRepository: ScanRepository) : ViewModel()
             if (id == null) {
                 emit(null)
             } else {
-                try {
-                    val result = scanRepository.getLatestScan(id)
-                    emit(result)
-                } catch (e: Exception) {
-                    emit(null)
-                }
+                val result = scanRepository.getLatestScan(id)
+                emit(result.getOrNull())
             }
         }
     }.stateIn(

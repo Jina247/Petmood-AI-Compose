@@ -1,13 +1,11 @@
 package com.example.data.repository
 
+import com.example.data.api.ApiService
 import com.example.data.api.LoginRequest
 import com.example.data.api.RegisterRequest
-import com.example.data.api.RetrofitInstance
 import com.example.session.SessionManager
 
-class AuthRepository {
-
-    private val api = RetrofitInstance.api
+class AuthRepository(private val api: ApiService) {
 
     suspend fun login(email: String, password: String): Result<Unit> {
         return try {

@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -51,7 +53,7 @@ class MainActivity : ComponentActivity() {
             .build()
 
         val apiService = Retrofit.Builder()
-            .baseUrl("https://petmoodai-dsa4f0bybtb8fzeh.eastasia-01.azurewebsites.net")
+            .baseUrl("https://petmoodai-au.azurewebsites.net")
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()
@@ -59,7 +61,7 @@ class MainActivity : ComponentActivity() {
 
         // 3. Repositories
         val scanRepository = ScanRepository(apiService)
-        val authRepository = AuthRepository()
+        val authRepository = AuthRepository(apiService)
         val petRepository = PetRepository(apiService)
 
 
@@ -72,6 +74,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MyApplicationTheme {
+                val context = LocalContext.current
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -79,6 +82,13 @@ class MainActivity : ComponentActivity() {
                 // Verify login state statically
                 val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
                 val petProfile by scanViewModel.petProfile.collectAsState()
+
+                // petProfile is only ever populated by an explicit refresh (see ScanViewModel) —
+                // fetch it whenever the session becomes active (fresh login, or app relaunch with
+                // an existing session).
+                LaunchedEffect(isLoggedIn) {
+                    if (isLoggedIn) scanViewModel.refreshPetProfile()
+                }
 
                 // Keep HistoryViewModel synced with current pet
                 LaunchedEffect(petProfile?.id) {
@@ -166,6 +176,7 @@ class MainActivity : ComponentActivity() {
                             PetProfileScreen(
                                 viewModel = petViewModel,
                                 onProfileSaved = {
+                                    scanViewModel.refreshPetProfile()
                                     if (!isFinishing) {
                                         navController.navigate("home") {
                                             popUpTo("pet_profile_setup") { inclusive = true }
@@ -222,6 +233,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onAnalysisFailed = { error ->
+                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
                                     if (!isFinishing) navController.popBackStack()
                                 }
                             )

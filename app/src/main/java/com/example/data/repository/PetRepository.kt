@@ -2,7 +2,6 @@ package com.example.data.repository
 
 import com.example.data.api.ApiService
 import com.example.data.api.PetCreate
-import com.example.data.api.RetrofitInstance
 import com.example.data.model.PetProfile
 
 class PetRepository(private val apiService: ApiService) {

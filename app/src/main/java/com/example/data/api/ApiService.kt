@@ -40,18 +40,6 @@ data class PetCreate(
     val gender: String
 )
 
-data class ScanResponse(
-    val id: String,
-    val status: String,
-    @Json(name = "mood_result")
-    val moodResult: String?,
-    val confidence: Double?,
-    @Json(name = "pet_id")
-    val petId: String,
-    @Json(name = "created_at")
-    val createdAt: String
-)
-
 interface ApiService {
 
     @POST("auth/login")
@@ -92,7 +80,7 @@ interface ApiService {
     suspend fun uploadScan(
         @Path("pet_id") petId: String,
         @Part file: MultipartBody.Part
-    ): ScanResponse
+    ): ScanResult
 
     @GET("pets/{pet_id}/scans/{scan_id}")
     suspend fun getScan(

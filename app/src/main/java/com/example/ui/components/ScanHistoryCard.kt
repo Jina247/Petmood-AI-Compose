@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.model.PetProfile
 import com.example.data.model.ScanResult
 import com.example.ui.theme.CardSurfaceCream
 import com.example.ui.theme.TextPrimaryDarkBrown

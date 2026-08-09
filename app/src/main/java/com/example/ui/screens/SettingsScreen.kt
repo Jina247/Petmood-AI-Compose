@@ -156,8 +156,8 @@ fun SettingsScreen(
                     Column {
                         val petName = petProfile?.name ?: "Bella"
                         val petType = petProfile?.petType ?: "Cat"
-                        val petAge = petProfile?.age ?: "2 years"
-                        
+                        val petAge = petProfile?.age ?: 2
+
                         Text(
                             text = petName.replaceFirstChar { it.uppercase() },
                             color = TextPrimaryDarkBrown,
@@ -165,7 +165,7 @@ fun SettingsScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "$petType • $petAge year(s) old",
+                            text = "$petType • $petAge ${if (petAge == 1) "year" else "years"} old",
                             color = TextPrimaryDarkBrown.copy(alpha = 0.6f),
                             fontSize = 13.sp
                         )
