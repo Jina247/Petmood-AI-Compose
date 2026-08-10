@@ -48,7 +48,7 @@ interface ApiService {
     @POST("auth/register")
     suspend fun register(@Body request: RegisterRequest): RegisterResponse
 
-    @GET("users/me")
+    @GET("auth/users/me")
     suspend fun getCurrentUserInfo(): RegisterResponse
 
     @GET("pets/")
