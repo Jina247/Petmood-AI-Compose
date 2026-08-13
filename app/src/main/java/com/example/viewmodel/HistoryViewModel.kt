@@ -31,7 +31,11 @@ class HistoryViewModel(private val scanRepository: ScanRepository) : ViewModel()
                 if (result.isSuccess) {
                     val results = result.getOrThrow()
                     emit(results)
-                    _uiState.value = HistoryUIState.Success(results)
+                    _uiState.value = if (results.isEmpty()) {
+                        HistoryUIState.Empty
+                    } else {
+                        HistoryUIState.Success(results)
+                    }
                 } else {
                     emit(null)
                     _uiState.value = HistoryUIState.Empty
