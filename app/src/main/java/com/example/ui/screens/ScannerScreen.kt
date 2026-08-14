@@ -1,15 +1,10 @@
 package com.example.ui.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
+import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +19,6 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -38,8 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
+import com.example.ui.components.CameraPreview
+import com.example.ui.components.VideoRecorderController
+import com.example.ui.components.rememberCameraPermissionState
 import com.example.ui.theme.CardSurfaceCream
 import com.example.ui.theme.PrimaryButtonYellow
 import com.example.ui.theme.TextPrimaryDarkBrown
@@ -48,7 +43,7 @@ import com.example.viewmodel.ScanUiState
 import com.example.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
 import java.io.File
-import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 @Composable
 fun ScannerScreen(
@@ -58,29 +53,14 @@ fun ScannerScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
 
     // Camera permission status
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { granted ->
-            hasCameraPermission = granted
-        }
-    )
+    val cameraPermissionState = rememberCameraPermissionState()
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (!cameraPermissionState.hasPermission) {
+            cameraPermissionState.requestPermission()
         }
     }
 
@@ -104,23 +84,24 @@ fun ScannerScreen(
     }
 
     // Recording states
+    var recorderController by remember { mutableStateOf<VideoRecorderController?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var recordingSeconds by remember { mutableIntStateOf(0) }
 
+    // 30s hard cap: at Quality.HD's device-dependent ~8-12 Mbps, a full 60s
+    // clip could exceed ScanViewModel's 50MB upload limit on its own — 30s
+    // keeps even a worst-case HD clip comfortably under that cap.
     LaunchedEffect(isRecording) {
         if (isRecording) {
-            recordingSeconds = 0
-            while (recordingSeconds < 5) {
-                delay(1000.milliseconds)
-                recordingSeconds++
-            }
-            // Finished recording! Create mock temp video file and process
-            isRecording = false
-            val mockVideoFile = File(context.cacheDir, "pet_scan_${System.currentTimeMillis()}.mp4")
-            mockVideoFile.createNewFile()
-            viewModel.startAnalysis(mockVideoFile)
-            onNavigateToAnalysing()
+            delay(30.seconds)
+            if (isRecording) recorderController?.stopRecording()
         }
+    }
+
+    // Leaving the screen mid-recording: stop it, but discard the result —
+    // don't upload/navigate on behalf of a screen that's already gone.
+    DisposableEffect(Unit) {
+        onDispose { recorderController?.discardAndStop() }
     }
 
     // Standard scanning pulse effect
@@ -177,62 +158,12 @@ fun ScannerScreen(
                     .border(2.dp, TextPrimaryDarkBrown, RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (hasCameraPermission) {
-                    AndroidView(
-                        factory = { ctx ->
-                            PreviewView(ctx).apply {
-                                scaleType = PreviewView.ScaleType.FILL_CENTER
-                                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                                cameraProviderFuture.addListener({
-                                    val cameraProvider = cameraProviderFuture.get()
-                                    val preview = Preview.Builder().build().also {
-                                        it.surfaceProvider = this.surfaceProvider
-                                    }
-                                    try {
-                                        cameraProvider.unbindAll()
-                                        cameraProvider.bindToLifecycle(
-                                            lifecycleOwner,
-                                            CameraSelector.DEFAULT_BACK_CAMERA,
-                                            preview
-                                        )
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }, ContextCompat.getMainExecutor(ctx))
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    // Friendly illustrative camera placeholder
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = "No camera permission icon",
-                            tint = Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Camera access is needed for real-time diagnostic scanning",
-                            color = Color.White.copy(alpha = 0.8f),
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(
-                            onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryButtonYellow, contentColor = TextPrimaryDarkBrown),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text("Grant Permission", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+                CameraPreview(
+                    hasCameraPermission = cameraPermissionState.hasPermission,
+                    onRequestPermission = cameraPermissionState.requestPermission,
+                    onRecorderReady = { recorderController = it },
+                    modifier = Modifier.fillMaxSize()
+                )
 
                 // If recording, show red blinking badge and timer
                 if (isRecording) {
@@ -252,7 +183,7 @@ fun ScannerScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Recording: 0:0$recordingSeconds",
+                                text = "Recording: %d:%02d".format(recordingSeconds / 60, recordingSeconds % 60),
                                 color = Color.White,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
@@ -284,8 +215,33 @@ fun ScannerScreen(
                     .clip(CircleShape)
                     .background(PrimaryButtonYellow)
                     .border(3.dp, TextPrimaryDarkBrown, CircleShape)
-                    .clickable(enabled = !isRecording) {
-                        isRecording = true
+                    .clickable {
+                        val controller = recorderController ?: return@clickable
+                        if (!isRecording) {
+                            val outputFile = File(context.cacheDir, "pet_scan_${System.currentTimeMillis()}.mp4")
+                            isRecording = true
+                            controller.startRecording(outputFile) { event ->
+                                when (event) {
+                                    is VideoRecordEvent.Status ->
+                                        recordingSeconds = (event.recordingStats.recordedDurationNanos / 1_000_000_000).toInt()
+                                    is VideoRecordEvent.Finalize -> {
+                                        isRecording = false
+                                        if (!event.hasError()) {
+                                            viewModel.startAnalysis(outputFile)
+                                            onNavigateToAnalysing()
+                                        } else {
+                                            outputFile.delete()
+                                            Toast.makeText(
+                                                context, "Recording failed. Please try again.", Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        } else {
+                            controller.stopRecording()
+                        }
                     }
                     .testTag("record_trigger_button"),
                 contentAlignment = Alignment.Center
