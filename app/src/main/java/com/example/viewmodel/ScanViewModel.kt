@@ -116,10 +116,11 @@ class ScanViewModel(
     }
 
     /**
-     * Legacy entry point kept for ScannerScreen's mock-recording flow, which already
-     * hands us a File directly instead of a content Uri. Shares the same upload+poll logic.
+     * Entry point for the in-app CameraX recording flow in ScannerScreen, which already
+     * hands us a recorded File directly instead of a content Uri. Shares the same
+     * upload+poll logic. Counterpart to [startScan], which handles gallery-picked videos.
      */
-    fun startAnalysis(fakeVideo: File) {
+    fun startAnalysis(videoFile: File) {
         val petId = _petProfile.value?.id
         if (petId == null) {
             Log.w(TAG, "startAnalysis called with no pet profile loaded yet")
@@ -129,7 +130,7 @@ class ScanViewModel(
             return
         }
         viewModelScope.launch {
-            performUploadAndPoll(petId, fakeVideo, guessMimeType(fakeVideo))
+            performUploadAndPoll(petId, videoFile, guessMimeType(videoFile))
         }
     }
 

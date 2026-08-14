@@ -43,4 +43,16 @@ class AuthRepository(private val api: ApiService) {
     fun getCurrentUserName(): String {
         return SessionManager.getUserName()
     }
+
+    fun editUserName(): String {
+        return ""
+    }
+
+    fun editUserEmail(): String {
+        return ""
+    }
+
+    fun editUserPassword(): String {
+        return ""
+    }
 }
