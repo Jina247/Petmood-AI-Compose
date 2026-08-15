@@ -15,5 +15,7 @@ data class ScanResult(
     val petId: String = "",
     val petName: String = "",                   // Added for UI
     @Json(name = "created_at")
-    val timestamp: String = ""                  // renamed from createdAt to match UI
+    val timestamp: String = "",                 // renamed from createdAt to match UI
+    val description: String? = null,            // owner-supplied text, optional
+    val suggestions: List<String>? = null       // actionable next steps
 )

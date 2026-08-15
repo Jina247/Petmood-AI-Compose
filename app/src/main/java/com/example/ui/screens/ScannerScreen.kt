@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.*
@@ -10,12 +11,16 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -26,12 +31,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil.compose.AsyncImage
 import com.example.ui.components.CameraPreview
 import com.example.ui.components.VideoRecorderController
 import com.example.ui.components.rememberCameraPermissionState
@@ -44,6 +52,8 @@ import com.example.viewmodel.ScanViewModel
 import kotlinx.coroutines.delay
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
+
+private const val MAX_DESCRIPTION_LENGTH = 500
 
 @Composable
 fun ScannerScreen(
@@ -68,6 +78,13 @@ fun ScannerScreen(
     val scanUiState by viewModel.scanUiState.collectAsState()
     val isScanInFlight = scanUiState is ScanUiState.Uploading || scanUiState is ScanUiState.Analysing
 
+    val selectedPhotos by viewModel.selectedPhotos.collectAsState()
+    val description by viewModel.description.collectAsState()
+    val canAddMorePhotos by viewModel.canAddMorePhotos.collectAsState()
+
+    // Tap-to-zoom preview target for a selected supporting photo; null means no preview showing.
+    var zoomedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -81,6 +98,12 @@ fun ScannerScreen(
             viewModel.startScan(petId, uri, context)
             onNavigateToAnalysing()
         }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(ScanViewModel.MAX_PHOTOS)
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) viewModel.onPhotosPicked(uris)
     }
 
     // Recording states
@@ -227,7 +250,7 @@ fun ScannerScreen(
                                     is VideoRecordEvent.Finalize -> {
                                         isRecording = false
                                         if (!event.hasError()) {
-                                            viewModel.startAnalysis(outputFile)
+                                            viewModel.startAnalysis(outputFile, context)
                                             onNavigateToAnalysing()
                                         } else {
                                             outputFile.delete()
@@ -296,7 +319,102 @@ fun ScannerScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Optional extras: supporting photos + a text description, attached to whichever
+            // video gets recorded/picked next. Purely optional — video alone is still enough.
+            Text(
+                text = "Add supporting photos or notes (optional):",
+                color = TextPrimaryDarkBrown,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Start
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyRow(
+                modifier = Modifier
+                    .testTag("photo_thumbnail_row")
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(selectedPhotos, key = { it.id }) { photo ->
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                    ) {
+                        AsyncImage(
+                            model = photo.uri,
+                            contentDescription = "Selected supporting photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { zoomedPhotoUri = photo.uri }
+                        )
+                        IconButton(
+                            onClick = { viewModel.removePhoto(photo.id) },
+                            modifier = Modifier
+                                .testTag("remove_photo_${photo.id}")
+                                .align(Alignment.TopEnd)
+                                .padding(2.dp)
+                                .size(22.dp)
+                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Remove photo",
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (canAddMorePhotos) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .testTag("add_photos_tile")
+                                .size(72.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(CardSurfaceCream)
+                                .border(1.5.dp, TextPrimaryDarkBrown.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                                .clickable(enabled = !isScanInFlight) {
+                                    photoPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddAPhoto,
+                                contentDescription = "Add supporting photos",
+                                tint = TextPrimaryDarkBrown
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = description,
+                onValueChange = { if (it.length <= MAX_DESCRIPTION_LENGTH) viewModel.updateDescription(it) },
+                label = { Text("Describe their behavior") },
+                placeholder = { Text("e.g. \"meows a lot at night\", \"hides under the bed when guests arrive\"") },
+                modifier = Modifier
+                    .testTag("description_input")
+                    .fillMaxWidth(),
+                minLines = 2,
+                supportingText = { Text("${description.length}/$MAX_DESCRIPTION_LENGTH") }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
 
             // Tip Cards row / section
             Text(
@@ -325,6 +443,29 @@ fun ScannerScreen(
             )
 
             Spacer(modifier = Modifier.height(120.dp)) // Extra space for BottomNav scroll clearance
+        }
+    }
+
+    // Tap-to-zoom preview overlay for a selected supporting photo
+    zoomedPhotoUri?.let { uri ->
+        Dialog(onDismissRequest = { zoomedPhotoUri = null }) {
+            Box(
+                modifier = Modifier
+                    .testTag("photo_zoom_preview")
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.Black)
+                    .clickable { zoomedPhotoUri = null },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = uri,
+                    contentDescription = "Zoomed supporting photo",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

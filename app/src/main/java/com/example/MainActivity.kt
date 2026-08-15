@@ -132,8 +132,8 @@ class MainActivity : ComponentActivity() {
                         composable("login") {
                             LoginScreen(
                                 viewModel = authViewModel,
-                                onNavigateToRegister = { 
-                                    if (!isFinishing) navController.navigate("register") 
+                                onNavigateToRegister = {
+                                    if (!isFinishing) navController.navigate("register")
                                 },
                                 onLoginSuccess = {
                                     if (!isFinishing) {
@@ -158,8 +158,8 @@ class MainActivity : ComponentActivity() {
                         composable("register") {
                             RegisterScreen(
                                 viewModel = authViewModel,
-                                onNavigateToLogin = { 
-                                    if (!isFinishing) navController.navigate("login") 
+                                onNavigateToLogin = {
+                                    if (!isFinishing) navController.navigate("login")
                                 },
                                 onRegisterSuccess = {
                                     if (!isFinishing) {
@@ -192,11 +192,11 @@ class MainActivity : ComponentActivity() {
                                 authViewModel = authViewModel,
                                 scanViewModel = scanViewModel,
                                 historyViewModel = historyViewModel,
-                                onNavigateToScan = { 
-                                    if (!isFinishing) navController.navigate("scan") 
+                                onNavigateToScan = {
+                                    if (!isFinishing) navController.navigate("scan")
                                 },
-                                onNavigateToProfile = { 
-                                    if (!isFinishing) navController.navigate("pet_profile_setup") 
+                                onNavigateToProfile = {
+                                    if (!isFinishing) navController.navigate("pet_profile_setup")
                                 },
                                 onNavigateToScanDetails = {
                                     if (!isFinishing) navController.navigate("results")
