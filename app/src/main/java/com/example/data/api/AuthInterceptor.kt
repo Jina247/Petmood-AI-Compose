@@ -34,7 +34,7 @@ class AuthInterceptor(private val context: Context) : Interceptor {
                     if (SessionManager.isLoggedIn() && !isRedirecting) {
                         isRedirecting = true
                         SessionManager.clearSession()
-                        // redirect to login
+                        // redirect to log in
                         val intent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                         }

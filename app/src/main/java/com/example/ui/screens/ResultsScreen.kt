@@ -183,6 +183,47 @@ fun ResultsScreen(
                             )
                         }
                     }
+
+                    // Suggestions from the photo-scan pipeline. Video-scan results leave
+                    // this null/empty, so the section simply doesn't render for them.
+                    if (!scan.suggestions.isNullOrEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Column(
+                            modifier = Modifier
+                                .testTag("results_suggestions")
+                                .fillMaxWidth()
+                                .background(WarmCreamBackground, RoundedCornerShape(12.dp))
+                                .border(1.dp, TextPrimaryDarkBrown.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.Start
+                        ) {
+                            Text(
+                                text = "Suggestions for you",
+                                color = TextPrimaryDarkBrown,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            scan.suggestions.forEach { suggestion ->
+                                Row(modifier = Modifier.padding(bottom = 6.dp)) {
+                                    Text(
+                                        text = "•",
+                                        color = TextPrimaryDarkBrown,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    )
+                                    Text(
+                                        text = suggestion,
+                                        color = TextPrimaryDarkBrown.copy(alpha = 0.8f),
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

@@ -4,6 +4,7 @@ import com.example.data.model.PetProfile
 import com.example.data.model.ScanResult
 import com.squareup.moshi.Json
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.*
 
 data class LoginRequest(
@@ -79,7 +80,9 @@ interface ApiService {
     @POST("pets/{pet_id}/scans")
     suspend fun uploadScan(
         @Path("pet_id") petId: String,
-        @Part file: MultipartBody.Part
+        @Part file: MultipartBody.Part,
+        @Part photos: List<MultipartBody.Part>,
+        @Part("description") description: RequestBody?
     ): ScanResult
 
     @GET("pets/{pet_id}/scans/{scan_id}")
