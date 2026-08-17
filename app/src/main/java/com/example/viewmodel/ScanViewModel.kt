@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.io.File
 import java.util.UUID
+import kotlin.time.Duration.Companion.milliseconds
 
 sealed interface ScanUiState {
     object Idle : ScanUiState
@@ -38,9 +39,9 @@ class ScanViewModel(
         private val ALLOWED_VIDEO_MIME_TYPES = setOf(
             "video/mp4", "video/mpeg", "video/quicktime", "video/webm", "video/3gpp"
         )
-        private const val MAX_VIDEO_UPLOAD_BYTES = 50L * 1024 * 1024 // 50MB, matches backend limit
+        private const val MAX_VIDEO_UPLOAD_BYTES = 50L * 1024 * 1024 // 50MB
         private val ALLOWED_PHOTO_MIME_TYPES = setOf("image/jpeg", "image/png", "image/webp")
-        private const val MAX_PHOTO_UPLOAD_BYTES = 4L * 1024 * 1024 // 4MB, matches backend limit
+        private const val MAX_PHOTO_UPLOAD_BYTES = 4L * 1024 * 1024 // 4MB
         const val MAX_PHOTOS = 3 // optional supporting photos alongside the required video
         private const val POLL_MAX_ATTEMPTS = 30
         private const val POLL_INTERVAL_MS = 2_500L // 30 * 2.5s = 75s hard ceiling
@@ -97,7 +98,7 @@ class ScanViewModel(
         viewModelScope.launch {
             _petProfile.value = try {
                 petRepository.getPets().firstOrNull()
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 null
             }
         }
@@ -254,7 +255,7 @@ class ScanViewModel(
         _scanUiState.value = ScanUiState.Analysing
         var attempts = 0
         while (attempts < POLL_MAX_ATTEMPTS) {
-            delay(POLL_INTERVAL_MS)
+            delay(POLL_INTERVAL_MS.milliseconds)
             attempts++
 
             val scan = scanRepository.getScan(petId, scanId).getOrNull() ?: continue

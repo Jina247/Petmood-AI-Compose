@@ -15,25 +15,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.data.api.ApiService
-import com.example.data.api.AuthInterceptor
+import com.example.data.api.buildApiService
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.PetRepository
 import com.example.data.repository.ScanRepository
 import com.example.session.SessionManager
 import com.example.ui.components.BottomNavBar
+import com.example.ui.components.rememberNotificationPermissionState
 import com.example.ui.screens.*
 import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.AuthViewModel
 import com.example.viewmodel.HistoryViewModel
 import com.example.viewmodel.PetViewModel
 import com.example.viewmodel.ScanViewModel
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import okhttp3.OkHttpClient
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,22 +36,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         // 2. Network client setup with interceptor
-        val okHttpClient = OkHttpClient.Builder()
-            .addInterceptor(AuthInterceptor(applicationContext))
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-
-        val moshi = Moshi.Builder()
-            .add(KotlinJsonAdapterFactory())
-            .build()
-
-        val apiService = Retrofit.Builder()
-            .baseUrl("https://petmoodai-au.azurewebsites.net")
-            .client(okHttpClient)
-            .addConverterFactory(MoshiConverterFactory.create(moshi))
-            .build()
-            .create(ApiService::class.java)
+        val apiService = buildApiService(applicationContext)
 
         // 3. Repositories
         val scanRepository = ScanRepository(apiService)
@@ -188,6 +167,12 @@ class MainActivity : ComponentActivity() {
 
                         // 4. Home Dashboard Screen
                         composable("home") {
+                            val notificationPermission = rememberNotificationPermissionState()
+                            LaunchedEffect(Unit) {
+                                if (!notificationPermission.hasPermission) {
+                                    notificationPermission.requestPermission()
+                                }
+                            }
                             HomeScreen(
                                 authViewModel = authViewModel,
                                 scanViewModel = scanViewModel,

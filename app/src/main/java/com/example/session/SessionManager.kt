@@ -9,6 +9,8 @@ object SessionManager {
     private const val KEY_TOKEN = "token"
     private const val KEY_EMAIL = "email"
     private const val KEY_NAME = "name"
+    private const val KEY_FCM_TOKEN = "fcm_token"
+    private const val KEY_FCM_SYNCED = "fcm_synced"
 
     private lateinit var prefs: SharedPreferences
 
@@ -18,6 +20,12 @@ object SessionManager {
 
     fun saveToken(token: String) {
         prefs.edit { putString(KEY_TOKEN, token) }
+    }
+    fun saveFcmToken(fcmToken: String) {
+        prefs.edit {
+            putString(KEY_FCM_TOKEN, fcmToken);
+            putBoolean(KEY_FCM_SYNCED, false)
+        }
     }
     fun saveUserInfo(email: String, name: String) {
         prefs.edit {
@@ -34,6 +42,18 @@ object SessionManager {
 
     fun getToken(): String {
         return prefs.getString(KEY_TOKEN, "") ?: ""
+    }
+
+    fun getFcmToken(): String? {
+        return prefs.getString(KEY_FCM_TOKEN, null)
+    }
+
+    fun syncFcmToken(sync: Boolean) {
+        prefs.edit{ putBoolean(KEY_FCM_SYNCED, sync)}
+    }
+
+    fun isFcmTokenSynced(): Boolean {
+        return prefs.getBoolean(KEY_FCM_SYNCED, false)
     }
 
     fun authHeader(): String = "Bearer ${getToken()}"

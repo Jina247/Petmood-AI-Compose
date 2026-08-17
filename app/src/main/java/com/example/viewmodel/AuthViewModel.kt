@@ -92,16 +92,18 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
     }
 
     fun logout() {
-        authRepository.logout()
-        _isLoggedIn.value = false
-        // Reset view state
-        loginEmail.value = ""
-        loginPassword.value = ""
-        registerName.value = ""
-        registerEmail.value = ""
-        registerPassword.value = ""
-        registerConfirmPassword.value = ""
-        _uiState.value = AuthUiState.Idle
+        viewModelScope.launch {
+            authRepository.logout()
+            _isLoggedIn.value = false
+            // Reset view state
+            loginEmail.value = ""
+            loginPassword.value = ""
+            registerName.value = ""
+            registerEmail.value = ""
+            registerPassword.value = ""
+            registerConfirmPassword.value = ""
+            _uiState.value = AuthUiState.Idle
+        }
     }
 
     fun getUserEmail(): String {
