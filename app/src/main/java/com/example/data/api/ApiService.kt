@@ -41,6 +41,11 @@ data class PetCreate(
     val gender: String
 )
 
+data class FcmTokenRequest(
+    @Json(name = "fcm_token")
+    val fcmToken: String?
+)
+
 interface ApiService {
 
     @POST("auth/login")
@@ -100,4 +105,10 @@ interface ApiService {
     suspend fun getLatestScan(
         @Path("pet_id") petId: String
     ): ScanResult
+
+    @PATCH("auth/fcm-token")
+    suspend fun updateFcmToken(
+        @Body request: FcmTokenRequest
+    ): Unit
+
 }
