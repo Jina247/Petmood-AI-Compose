@@ -46,10 +46,6 @@ Command-line equivalents (from repo root):
 - Unit tests: `./gradlew test` — mostly template boilerplate today; no real app test coverage yet
 - Instrumented tests (needs device/emulator): `./gradlew connectedAndroidTest`
 
-> Note: `.env` / `GEMINI_API_KEY` and the `secrets` Gradle plugin are leftovers from this project's
-> original AI-Studio scaffold and are unused by the app today — Gemini is called server-side by the
-> backend, not from the client. Safe to ignore for local dev.
-
 ## Known limitations
 - Live camera recording (record button on the scanner screen) is currently a mock and does not capture
   real video — only the gallery-picker upload path works end-to-end.
