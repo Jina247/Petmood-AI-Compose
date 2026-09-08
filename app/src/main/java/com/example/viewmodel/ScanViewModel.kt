@@ -355,4 +355,53 @@ class ScanViewModel(
         _currentScanResult.value = scan
         _scanUiState.value = ScanUiState.Success(scan)
     }
+
+    /**
+     * Called once from the app's routing gate on login/cold-launch: since polling only ever
+     * lives in this in-memory ViewModel (see the ViewModel-doesn't-survive-process-death known
+     * issue), a scan left "processing" when the app was killed has no other way to resume.
+     * Cheap because it reuses the existing getLatestScan endpoint already wired into
+     * HistoryViewModel — no new backend call.
+     */
+    fun checkForPendingScan(petId: String, onPending: (scanId: String) -> Unit, onNone: () -> Unit) {
+        viewModelScope.launch {
+            val latest = scanRepository.getLatestScan(petId).getOrNull()
+            if (latest != null && latest.status == "processing") {
+                onPending(latest.id)
+            } else {
+                onNone()
+            }
+        }
+    }
+
+    /** Resumes polling a scan that was already "processing" before this ViewModel existed
+     * (see [checkForPendingScan]) — counterpart to the poll kicked off inline by
+     * [performUploadAndPoll] for a scan just started in this process. */
+    fun resumePendingScan(petId: String, scanId: String) {
+        viewModelScope.launch {
+            _scanUiState.value = ScanUiState.Analysing
+            pollForResult(petId, scanId)
+        }
+    }
+
+    /**
+     * Entry point for the FCM deep link (see PetMoodFirebaseMessagingService /
+     * MainActivity's routing gate): fetches a specific scan by id and shows it directly,
+     * same as tapping into it from History, except the [ScanResult] object itself isn't
+     * already in memory — it has to come from the network.
+     *
+     * Deliberately `suspend` rather than firing its own [viewModelScope] launch: the caller
+     * (routing gate) needs to know whether the fetch succeeded *before* navigating to
+     * "results", since that screen has no loading/error state of its own — it falls back to
+     * showing mock data when [currentScanResult] is null, which would otherwise flash briefly
+     * (or get stuck) on every deep-link open.
+     */
+    suspend fun loadScanById(petId: String, scanId: String): Boolean {
+        val scan = scanRepository.getScan(petId, scanId).getOrNull() ?: run {
+            Log.w(TAG, "Deep-linked scan $scanId (pet $petId) could not be loaded")
+            return false
+        }
+        showScanDetails(scan)
+        return true
+    }
 }

@@ -37,6 +37,7 @@ class AuthInterceptor(private val context: Context) : Interceptor {
                         // redirect to log in
                         val intent = Intent(context, MainActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            putExtra(MainActivity.EXTRA_SESSION_EXPIRED, true)
                         }
                         context.startActivity(intent)
                         // Reset the flag after some time to allow future redirects if needed
