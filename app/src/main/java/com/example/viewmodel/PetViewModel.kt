@@ -119,8 +119,8 @@ class PetViewModel(private val repository: PetRepository) : ViewModel() {
     }
 
     fun checkHasPets(
-        onHasPets: () -> Unit,
-        onNoPets: () -> Unit
+        onHasPets: suspend () -> Unit,
+        onNoPets: suspend () -> Unit
     ) {
         viewModelScope.launch {
             try {

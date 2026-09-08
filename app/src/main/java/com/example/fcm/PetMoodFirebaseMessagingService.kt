@@ -2,9 +2,12 @@ package com.example.fcm
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.example.MainActivity
 import com.example.R
 import com.example.data.api.buildApiService
 import com.example.data.repository.AuthRepository
@@ -43,14 +46,29 @@ class PetMoodFirebaseMessagingService : FirebaseMessagingService() {
         super.onMessageReceived(message)
         val title = message.notification?.title ?: return
         val body = message.notification?.body ?: ""
+        // Sent alongside the notification text by the backend's send_scan_notification() —
+        // see MainActivity.EXTRA_DEEPLINK_SCAN_ID for how the client picks this up.
+        val scanId = message.data["scan_id"]
 
         ensureNotificationChannel()
+
+        val contentIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            if (scanId != null) putExtra(MainActivity.EXTRA_DEEPLINK_SCAN_ID, scanId)
+        }
+        val contentPendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            contentIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle(title)
             .setContentText(body)
             .setAutoCancel(true)
+            .setContentIntent(contentPendingIntent)
             .build()
 
         try {
