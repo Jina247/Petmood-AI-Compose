@@ -87,13 +87,13 @@ fun SettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            IconButton(onClick = onClickBack) {
+            IconButton(
+                onClick = onClickBack,
+                modifier = Modifier.align(Alignment.Start)
+            ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBackIosNew,
-                    contentDescription = "Back",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.Start)
+                    contentDescription = "Back"
                 )
             }
             // Screen Header

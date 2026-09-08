@@ -154,7 +154,10 @@ fun ScannerScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            IconButton(onClick = onClickBack) {
+            IconButton(
+                onClick = onClickBack,
+                modifier = Modifier.align(Alignment.Start)
+            ) {
                 Icon(
                     imageVector = Icons.Default.ArrowBackIosNew,
                     contentDescription = "Back")
