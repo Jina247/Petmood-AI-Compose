@@ -1,10 +1,22 @@
 package com.example
 
+import android.os.SystemClock
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import kotlinx.coroutines.launch
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -15,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -32,6 +46,7 @@ import com.example.ui.theme.MyApplicationTheme
 import com.example.viewmodel.AuthViewModel
 import com.example.viewmodel.HistoryViewModel
 import com.example.viewmodel.PetViewModel
+import com.example.viewmodel.ScanUiState
 import com.example.viewmodel.ScanViewModel
 
 // "edit" defaults to false so callers that just want the plain first-time-setup route can
@@ -39,47 +54,64 @@ import com.example.viewmodel.ScanViewModel
 private const val ROUTE_PET_SETUP = "pet_profile_setup?edit={edit}"
 
 class MainActivity : ComponentActivity() {
+    // One client per Activity instance; only built if a ViewModel factory actually needs it.
+    private val apiService by lazy { buildApiService(applicationContext) }
+
     companion object {
         /** Set by [com.example.data.api.AuthInterceptor] when it force-logs-out on a 401, so
          * the restarted Activity can explain why the user landed back on login instead of
          * restarting silently mid-task. */
         const val EXTRA_SESSION_EXPIRED = "session_expired"
 
-        /** Set by [com.example.fcm.PetMoodFirebaseMessagingService] when a "scan complete"/
-         * "scan failed" push is tapped, carrying the scan id from the notification's data
-         * payload so the routing gate can open straight into that result. MainActivity's
-         * launch mode is "standard" (no override in the manifest), and the notification's
-         * PendingIntent uses CLEAR_TOP, which for standard mode always finishes any existing
-         * instance and creates a fresh one — so reading this once in onCreate (like
-         * [EXTRA_SESSION_EXPIRED]) is sufficient; no onNewIntent handling needed. */
-        const val EXTRA_DEEPLINK_SCAN_ID = "deeplink_scan_id"
+        /** Scan id of a tapped "scan complete"/"scan failed" push, so the routing gate can
+         * open straight into that result. Must equal the backend's FCM data key ("scan_id"):
+         * when the app is in the background, Android shows the notification itself and puts
+         * the data payload on the launch intent under its own keys, so
+         * PetMoodFirebaseMessagingService never runs. In the foreground the service builds
+         * the intent and uses this same key. */
+        const val EXTRA_DEEPLINK_SCAN_ID = "scan_id"
+
+        private const val SPLASH_MAX_MS = 2_000L
     }
 
+    // Read by the splash screen's keep-on-screen check; cleared once the routing gate has
+    // picked a destination (or after SPLASH_MAX_MS, so a slow network never traps the user
+    // on the splash — the routing spinner takes over from there).
+    @Volatile private var isRouting = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashStart = SystemClock.uptimeMillis()
+        installSplashScreen().setKeepOnScreenCondition {
+            isRouting && SystemClock.uptimeMillis() - splashStart < SPLASH_MAX_MS
+        }
         super.onCreate(savedInstanceState)
         SessionManager.init(this)
         enableEdgeToEdge()
 
-        if (intent.getBooleanExtra(EXTRA_SESSION_EXPIRED, false)) {
+        // savedInstanceState is non-null when recreated (e.g. rotation) — only toast once.
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_SESSION_EXPIRED, false)) {
             Toast.makeText(this, "Your session expired — please log in again.", Toast.LENGTH_LONG).show()
         }
         val deepLinkScanId = intent.getStringExtra(EXTRA_DEEPLINK_SCAN_ID)
 
-        // 2. Network client setup with interceptor
-        val apiService = buildApiService(applicationContext)
-
-        // 3. Repositories
-        val scanRepository = ScanRepository(apiService)
-        val authRepository = AuthRepository(apiService)
-        val petRepository = PetRepository(apiService)
-
-
-        // 4. ViewModels
-        // Ideally these should use viewModel() factory to survive config changes
-        val authViewModel = AuthViewModel(authRepository)
-        val petViewModel = PetViewModel(petRepository)
-        val scanViewModel = ScanViewModel(scanRepository, petRepository)
-        val historyViewModel = HistoryViewModel(scanRepository)
+        // ViewModels are Activity-scoped via viewModels {}, so rotation, dark-mode or font-size
+        // changes reuse the same instances (and any in-flight scan poll) instead of creating
+        // new ones. Their factories only run the first time; the repositories they capture
+        // live as long as the ViewModels do.
+        val authViewModel: AuthViewModel by viewModels {
+            viewModelFactory { initializer { AuthViewModel(AuthRepository(apiService)) } }
+        }
+        val petViewModel: PetViewModel by viewModels {
+            viewModelFactory { initializer { PetViewModel(PetRepository(apiService)) } }
+        }
+        val scanViewModel: ScanViewModel by viewModels {
+            viewModelFactory {
+                initializer { ScanViewModel(ScanRepository(apiService), PetRepository(apiService)) }
+            }
+        }
+        val historyViewModel: HistoryViewModel by viewModels {
+            viewModelFactory { initializer { HistoryViewModel(ScanRepository(apiService)) } }
+        }
 
         setContent {
             MyApplicationTheme {
@@ -87,6 +119,12 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
+                SideEffect { isRouting = currentRoute == null || currentRoute == "routing" }
+
+                // App-wide snackbars: outlive screen changes (unlike a screen's own host) and,
+                // unlike Toasts, stay up long enough to read and can carry an action.
+                val snackbarHostState = remember { SnackbarHostState() }
+                val appScope = rememberCoroutineScope()
 
                 // Verify login state statically
                 val isLoggedIn by authViewModel.isLoggedIn.collectAsState()
@@ -104,6 +142,22 @@ class MainActivity : ComponentActivity() {
                     petProfile?.id?.let { historyViewModel.setPetId(it) }
                 }
 
+                // When a scan finishes (wherever the user is — they may have left the analysing
+                // screen), reload History/Home so the new result shows up. Only transitions out
+                // of Analysing count: Success is also set by just opening an old result.
+                val scanUiState by scanViewModel.scanUiState.collectAsState()
+                var wasAnalysing by remember { mutableStateOf(false) }
+                LaunchedEffect(scanUiState) {
+                    when (scanUiState) {
+                        is ScanUiState.Analysing -> wasAnalysing = true
+                        is ScanUiState.Success, is ScanUiState.Error -> if (wasAnalysing) {
+                            wasAnalysing = false
+                            historyViewModel.refresh()
+                        }
+                        else -> Unit
+                    }
+                }
+
                 // Only the persistent tabs get the bottom bar — "scan"/"results" are a linear
                 // task layered on top of the tabs, not peer destinations (see nav review).
                 val showBottomNav = currentRoute in listOf(
@@ -114,6 +168,7 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    snackbarHost = { SnackbarHost(snackbarHostState) },
                     bottomBar = {
                         if (showBottomNav) {
                             BottomNavBar(
@@ -134,8 +189,19 @@ class MainActivity : ComponentActivity() {
                     NavHost(
                         navController = navController,
                         startDestination = "routing",
-                        modifier = Modifier.padding(innerPadding)
-
+                        modifier = Modifier.padding(innerPadding),
+                        // Short fade + slight slide: forward moves in from the right, back
+                        // returns from the left. Subtle enough for tab switches too.
+                        enterTransition = {
+                            fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 10 }
+                        },
+                        exitTransition = { fadeOut(tween(180)) },
+                        popEnterTransition = {
+                            fadeIn(tween(220)) + slideInHorizontally(tween(220)) { -it / 10 }
+                        },
+                        popExitTransition = {
+                            fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { it / 10 }
+                        }
                     ) {
                         // 0. Routing gate — the single place that decides where a logged-in
                         // user lands (home vs pet setup vs resuming a scan left "processing"
@@ -172,11 +238,11 @@ class MainActivity : ComponentActivity() {
                                             if (loaded) {
                                                 navController.navigate("results")
                                             } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "Couldn't open that scan result.",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
+                                                appScope.launch {
+                                                    snackbarHostState.showSnackbar(
+                                                        "Couldn't open that scan result. It's in History once it loads."
+                                                    )
+                                                }
                                             }
                                             return@checkHasPets
                                         }
@@ -280,6 +346,7 @@ class MainActivity : ComponentActivity() {
 
                         // 4. Home Dashboard Screen
                         composable("home") {
+                            LaunchedEffect(Unit) { historyViewModel.refresh() }
                             val notificationPermission = rememberNotificationPermissionState()
                             LaunchedEffect(Unit) {
                                 if (!notificationPermission.hasPermission) {
@@ -334,8 +401,24 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
+                                onContinueInBackground = {
+                                    // Polling keeps running in ScanViewModel; the result also
+                                    // arrives as a push and lands in History.
+                                    if (!isFinishing) {
+                                        navController.navigate("home") {
+                                            popUpTo("home") { inclusive = false }
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                },
                                 onAnalysisFailed = { error ->
-                                    Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                                    appScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = error,
+                                            withDismissAction = true,
+                                            duration = SnackbarDuration.Long
+                                        )
+                                    }
                                     // "scan" is no longer guaranteed to be on the stack (see
                                     // above), so re-navigate explicitly rather than popping —
                                     // "home" is always the destination directly beneath.
@@ -359,11 +442,11 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onSaveToHistory = {
-                                    if (!isFinishing) {
-                                        navController.navigate("history") {
-                                            popUpTo("results") { inclusive = true }
-                                        }
+                                onDone = {
+                                    // Back to wherever the result was opened from (Home,
+                                    // History, or Home underneath a finished scan/deep link).
+                                    if (!isFinishing && !navController.popBackStack()) {
+                                        navController.navigate("home")
                                     }
                                 }
                             )
@@ -371,6 +454,7 @@ class MainActivity : ComponentActivity() {
 
                         // 8. History Screen
                         composable("history") {
+                            LaunchedEffect(Unit) { historyViewModel.refresh() }
                             HistoryScreen(
                                 historyViewModel = historyViewModel,
                                 scanViewModel = scanViewModel,

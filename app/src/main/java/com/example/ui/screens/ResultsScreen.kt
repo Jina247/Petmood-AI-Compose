@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -37,10 +35,9 @@ import com.example.viewmodel.ScanViewModel
 fun ResultsScreen(
     viewModel: ScanViewModel,
     onScanAgain: () -> Unit,
-    onSaveToHistory: () -> Unit,
+    onDone: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     val petProfile by viewModel.petProfile.collectAsState()
     val currentScan by viewModel.currentScanResult.collectAsState()
 
@@ -254,15 +251,14 @@ fun ResultsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Outlined "Save to History" button
+            // Scans are saved to History automatically by the backend, so this just leaves.
             OutlinedButton(
                 onClick = {
-                    Toast.makeText(context, "Scan saved to history successfully!", Toast.LENGTH_SHORT).show()
                     viewModel.clearActiveResult()
-                    onSaveToHistory() // Transitions back
+                    onDone()
                 },
                 modifier = Modifier
-                    .testTag("save_to_history_button")
+                    .testTag("done_button")
                     .fillMaxWidth()
                     .height(52.dp),
                 colors = ButtonDefaults.outlinedButtonColors(
@@ -272,7 +268,7 @@ fun ResultsScreen(
                 shape = RoundedCornerShape(26.dp)
             ) {
                 Text(
-                    text = "Save to History",
+                    text = "Done",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )

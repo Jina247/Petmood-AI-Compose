@@ -27,6 +27,12 @@ sealed interface ScanUiState {
     data class Error(val message: String) : ScanUiState
 }
 
+/** A video the user has picked or recorded but not yet sent — shown for review first. */
+sealed interface PendingVideo {
+    data class Picked(val uri: Uri) : PendingVideo
+    data class Recorded(val file: File) : PendingVideo
+}
+
 data class SelectedPhoto(val id: String = UUID.randomUUID().toString(), val uri: Uri)
 
 class ScanViewModel(
@@ -57,6 +63,9 @@ class ScanViewModel(
     // Optional extras a scan can carry alongside its required video.
     private val _selectedPhotos = MutableStateFlow<List<SelectedPhoto>>(emptyList())
     val selectedPhotos: StateFlow<List<SelectedPhoto>> = _selectedPhotos.asStateFlow()
+
+    private val _pendingVideo = MutableStateFlow<PendingVideo?>(null)
+    val pendingVideo: StateFlow<PendingVideo?> = _pendingVideo.asStateFlow()
 
     private val _description = MutableStateFlow("")
     val description: StateFlow<String> = _description.asStateFlow()
@@ -124,6 +133,37 @@ class ScanViewModel(
         _description.value = text
     }
 
+    fun onVideoPicked(uri: Uri) {
+        discardPendingVideo()
+        _pendingVideo.value = PendingVideo.Picked(uri)
+    }
+
+    fun onVideoRecorded(file: File) {
+        discardPendingVideo()
+        _pendingVideo.value = PendingVideo.Recorded(file)
+    }
+
+    /** "Choose another" on the review card. Deletes a recorded clip; picked ones aren't ours. */
+    fun discardPendingVideo() {
+        (_pendingVideo.value as? PendingVideo.Recorded)?.file?.delete()
+        _pendingVideo.value = null
+    }
+
+    /**
+     * Sends the reviewed video (plus current photos/description). Returns false, leaving the
+     * video in place, if there's no pet profile to attach it to yet.
+     */
+    fun submitPendingVideo(context: Context): Boolean {
+        val video = _pendingVideo.value ?: return false
+        val petId = _petProfile.value?.id ?: return false
+        _pendingVideo.value = null
+        when (video) {
+            is PendingVideo.Picked -> startScan(petId, video.uri, context)
+            is PendingVideo.Recorded -> startAnalysis(video.file, context)
+        }
+        return true
+    }
+
     /**
      * Entry point for the real gallery-picker flow: uploads the video at [videoUri] (plus
      * whatever's currently selected in [selectedPhotos]/[description]), then polls until the
@@ -133,12 +173,14 @@ class ScanViewModel(
      * so there's no separate "selected pet" concept to track independently.
      */
     fun startScan(petId: String, videoUri: Uri, context: Context) {
+        // The upload outlives the screen (rotation, "notify me"), so never hold an Activity.
+        val appContext = context.applicationContext
         viewModelScope.launch {
             _scanUiState.value = ScanUiState.Uploading
             _currentScanResult.value = null
 
             val prepared = try {
-                copyVideoUriToCacheFile(context, videoUri)
+                copyVideoUriToCacheFile(appContext, videoUri)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to read video from $videoUri", e)
                 _scanUiState.value = ScanUiState.Error(
@@ -146,7 +188,7 @@ class ScanViewModel(
                 )
                 return@launch
             }
-            performUploadAndPoll(petId, prepared.first, prepared.second, context)
+            performUploadAndPoll(petId, prepared.first, prepared.second, appContext)
         }
     }
 
@@ -165,7 +207,7 @@ class ScanViewModel(
             return
         }
         viewModelScope.launch {
-            performUploadAndPoll(petId, videoFile, guessMimeType(videoFile), context)
+            performUploadAndPoll(petId, videoFile, guessMimeType(videoFile), context.applicationContext)
         }
     }
 
