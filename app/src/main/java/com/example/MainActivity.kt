@@ -216,6 +216,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     return@LaunchedEffect
                                 }
+                                authViewModel.syncFcmToken()
                                 petViewModel.checkHasPets(
                                     onHasPets = {
                                         scanViewModel.refreshPetProfile()

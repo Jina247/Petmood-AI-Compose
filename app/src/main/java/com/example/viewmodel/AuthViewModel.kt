@@ -91,6 +91,12 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
         }
     }
 
+    /** Retries sending this device's push token if an earlier attempt (login, token
+     * rotation) failed. No-op when already synced or logged out. */
+    fun syncFcmToken() {
+        viewModelScope.launch { authRepository.syncFcmTokenIfNeeded() }
+    }
+
     fun logout() {
         viewModelScope.launch {
             authRepository.logout()

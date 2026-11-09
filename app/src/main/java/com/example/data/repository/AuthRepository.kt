@@ -68,7 +68,7 @@ class AuthRepository(private val api: ApiService) {
             api.updateFcmToken(FcmTokenRequest(fcmToken = token))
             SessionManager.syncFcmToken(true)
         } catch (e: Exception) {
-            // leave unsynced — next login or token rotation retries
+            // leave unsynced — next app launch, login, or token rotation retries
         }
     }
 
