@@ -48,10 +48,12 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
   When the task finishes it also sends an FCM push (`firebase_client.send_scan_notification`, never
   raises) to the user's stored `fcm_token`, with `pet_id`/`scan_id` as the data payload.
 - Push notifications: the client registers its FCM token via `PATCH /auth/fcm-token` after login/
-  register and on `onNewToken`, and clears it (`fcm_token: null`) on logout. Tapping a push opens
+  register, on `onNewToken`, and on every launch while logged in (`AuthViewModel.syncFcmToken()` from
+  the routing gate; no-op once synced), and clears it (`fcm_token: null`) on logout. Tapping a push opens
   the app with a `scan_id` intent extra (`MainActivity.EXTRA_DEEPLINK_SCAN_ID`, which must stay
   equal to the backend's data key — in the background Android builds the launch intent itself
-  from the data payload, so `PetMoodFirebaseMessagingService` never runs).
+  from the data payload, so `PetMoodFirebaseMessagingService` never runs). The backend stores **one**
+  `fcm_token` per user: the last device to log in gets pushes, and logging out anywhere clears it.
 - `MainActivity`'s `"routing"` destination is the start destination and the single place that
   decides where a logged-in user lands (login / pet setup / FCM deep-linked result / resuming a scan
   left `processing` / home). Login and register success navigate to `"routing"`, not to a screen.
@@ -109,14 +111,18 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 **Backend** (`../FastAPIProject`)
 - `main.py` — app + lifespan (runs migrations, warns if `GEMINI_API_KEY` unset).
 - `config.py` — all env vars: `SECRET_KEY`, `DATABASE_URL` (sqlite fallback for local dev only),
-  `GEMINI_API_KEY`. `ALGORITHM` is hardcoded `"HS256"`, **not** an env var, despite looking like one.
+  `GEMINI_API_KEY`, and the Firebase service-account key as either `FIREBASE_CRED_JSON` (the JSON
+  content — what Azure uses, since the key file is gitignored and never deployed) or `FIREBASE_CRED`
+  (a file path, for local dev). `ALGORITHM` is hardcoded `"HS256"`, **not** an env var, despite looking like one.
 - `routers/auth.py` — `/auth/register`, `/auth/login`, `/auth/users/me` (note the prefix — see Known
   issues), JWT issuance.
 - `routers/pets.py` — CRUD, owner-scoped (`Pet.owner_id == current_user.id`) on every query.
 - `routers/scans.py` — single `create_scan` handler validates the required video (content-type allowlist,
   50MB cap) plus optional `photos` (≤3, content-type allowlist, 4MB/photo cap) and `description` (≤1000
   chars), shared 5/hour rate limit, kicks off the background `analyze_scan` task.
-- `firebase_client.py` — Firebase Admin init + `send_scan_notification()`.
+- `firebase_client.py` — Firebase Admin init + `send_scan_notification()`. Soft-fails: with no key it
+  logs a startup warning and silently skips every push, so check the startup log for
+  `push notifications enabled` before debugging the client.
 - `gemini_client.py` — all Gemini interaction (model fallback list `GEMINI_MODELS` on 429, retry with
   backoff on 503, owner-friendly error messages); `analyze_pet_scan(video_path, photo_paths, description)` is
   the one entry point (no separate video-only/photo-only functions) — raises `GeminiAnalysisError` (caught
@@ -192,6 +198,14 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
   rotation created a fresh `ScanViewModel`, orphaning in-flight polls. Now `by viewModels {}`;
   `ScanViewModel` also only keeps `applicationContext` for uploads. Verified on an emulator (login
   form text survives rotation).
+- **Pushes were never sent in production**: Azure had no `FIREBASE_CRED` (the key file is gitignored,
+  so GitHub deploys can't ship it), so Firebase never initialized and every push was skipped with only
+  a startup warning. Fixed by `FIREBASE_CRED_JSON` (set on Azure) — takes effect once backend branch
+  `feature/fcm-deep-link-friendly-errors` is merged and deployed. Tokens were registering fine.
+- **Token sync only ran at login/token rotation**: one failed attempt meant the server never got the
+  token. Now also retried on every launch.
+- **Raw Gemini errors reached owners** (including a server file path): every `GeminiAnalysisError`
+  message is shown in the app and the "failed" push, so all are plain text now; raw errors are logged.
 
 ### Currently open
 
@@ -199,6 +213,12 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
   `standard` launch mode and reads the deep-link extra only in `onCreate`. If tapping a tray
   notification just brings the existing task forward, the extra is never read. Not yet verified on
   a device; a fix would be `singleTop` + `onNewIntent` re-entering `"routing"`.
+- **Push delivery not yet verified on a device.** Server side is verified locally (the key initializes
+  and Firebase accepts sends to the app's token, so key and app share a project). The
+  `Medium_Phone_API_36.0` emulator can't receive any FCM (its Play Services check-in/cloud-messaging
+  service is broken), so test on a real phone: with the app installed and debuggable, the token is in
+  `shared_prefs/com.google.android.gms.appid.xml` (`|T|…|*` key), and the backend's
+  `send_scan_notification()` can be run locally against it.
 
 ## Conventions
 
