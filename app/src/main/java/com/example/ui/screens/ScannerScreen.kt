@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -7,6 +9,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.video.VideoRecordEvent
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -47,9 +52,12 @@ import com.example.ui.theme.CardSurfaceCream
 import com.example.ui.theme.PrimaryButtonYellow
 import com.example.ui.theme.TextPrimaryDarkBrown
 import com.example.ui.theme.WarmCreamBackground
+import com.example.viewmodel.PendingVideo
 import com.example.viewmodel.ScanUiState
 import com.example.viewmodel.ScanViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
 
@@ -88,17 +96,11 @@ fun ScannerScreen(
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        val petId = petProfile?.id
-        if (petId == null) {
-            Toast.makeText(
-                context, "We couldn't find your pet profile. Please set up your pet first.", Toast.LENGTH_SHORT
-            ).show()
-        } else {
-            viewModel.startScan(petId, uri, context)
-            onNavigateToAnalysing()
-        }
+        if (uri != null) viewModel.onVideoPicked(uri)
     }
+
+    val pendingVideo by viewModel.pendingVideo.collectAsState()
+    val petName = (petProfile?.name ?: "your pet").replaceFirstChar { it.uppercase() }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(ScanViewModel.MAX_PHOTOS)
@@ -110,6 +112,12 @@ fun ScannerScreen(
     var recorderController by remember { mutableStateOf<VideoRecorderController?>(null) }
     var isRecording by remember { mutableStateOf(false) }
     var recordingSeconds by remember { mutableIntStateOf(0) }
+
+    // The camera is unbound while a video is under review; drop the stale controller so the
+    // record button can't use it. CameraPreview hands a fresh one back when it returns.
+    LaunchedEffect(pendingVideo) {
+        if (pendingVideo != null) recorderController = null
+    }
 
     // 30s hard cap: at Quality.HD's device-dependent ~8-12 Mbps, a full 60s
     // clip could exceed ScanViewModel's 50MB upload limit on its own — 30s
@@ -184,12 +192,17 @@ fun ScannerScreen(
                     .border(2.dp, TextPrimaryDarkBrown, RoundedCornerShape(24.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                CameraPreview(
-                    hasCameraPermission = cameraPermissionState.hasPermission,
-                    onRequestPermission = cameraPermissionState.requestPermission,
-                    onRecorderReady = { recorderController = it },
-                    modifier = Modifier.fillMaxSize()
-                )
+                val video = pendingVideo
+                if (video != null) {
+                    VideoReviewPreview(video = video, modifier = Modifier.fillMaxSize())
+                } else {
+                    CameraPreview(
+                        hasCameraPermission = cameraPermissionState.hasPermission,
+                        onRequestPermission = cameraPermissionState.requestPermission,
+                        onRecorderReady = { recorderController = it },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
                 // If recording, show red blinking badge and timer
                 if (isRecording) {
@@ -224,7 +237,11 @@ fun ScannerScreen(
 
             // Instructions text
             Text(
-                text = if (isRecording) "Great, keeping camera steady!" else "Point at your pet and hold still",
+                text = when {
+                    pendingVideo != null -> "Looks good? Add photos or notes below, then tap Analyse."
+                    isRecording -> "Great, keeping camera steady!"
+                    else -> "Point at your pet and hold still"
+                },
                 color = TextPrimaryDarkBrown,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
@@ -234,6 +251,40 @@ fun ScannerScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            if (pendingVideo != null) {
+                Button(
+                    onClick = {
+                        if (viewModel.submitPendingVideo(context)) {
+                            onNavigateToAnalysing()
+                        } else {
+                            Toast.makeText(
+                                context, "We couldn't find your pet profile. Please set up your pet first.", Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    enabled = !isScanInFlight,
+                    modifier = Modifier
+                        .testTag("analyse_video_button")
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PrimaryButtonYellow,
+                        contentColor = TextPrimaryDarkBrown
+                    ),
+                    shape = RoundedCornerShape(26.dp)
+                ) {
+                    Text("Analyse $petName's video", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                TextButton(
+                    onClick = { viewModel.discardPendingVideo() },
+                    modifier = Modifier.testTag("change_video_button")
+                ) {
+                    Text("Choose a different video", color = TextPrimaryDarkBrown, fontWeight = FontWeight.SemiBold)
+                }
+            } else {
             // Large Circular Yellow Record Button
             Box(
                 modifier = Modifier
@@ -253,8 +304,7 @@ fun ScannerScreen(
                                     is VideoRecordEvent.Finalize -> {
                                         isRecording = false
                                         if (!event.hasError()) {
-                                            viewModel.startAnalysis(outputFile, context)
-                                            onNavigateToAnalysing()
+                                            viewModel.onVideoRecorded(outputFile)
                                         } else {
                                             outputFile.delete()
                                             Toast.makeText(
@@ -320,6 +370,7 @@ fun ScannerScreen(
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -469,6 +520,65 @@ fun ScannerScreen(
                     modifier = Modifier.fillMaxSize()
                 )
             }
+        }
+    }
+}
+
+/** First frame + length of the video awaiting review, read off the main thread. */
+@Composable
+private fun VideoReviewPreview(video: PendingVideo, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var thumbnail by remember(video) { mutableStateOf<Bitmap?>(null) }
+    var durationMs by remember(video) { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(video) {
+        withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                when (video) {
+                    is PendingVideo.Picked -> retriever.setDataSource(context, video.uri)
+                    is PendingVideo.Recorded -> retriever.setDataSource(video.file.absolutePath)
+                }
+                durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                thumbnail = retriever.getFrameAtTime(0)
+            } catch (_: Exception) {
+                // No preview available; the placeholder icon below stays.
+            } finally {
+                retriever.release()
+            }
+        }
+    }
+
+    Box(modifier = modifier.testTag("video_review_preview"), contentAlignment = Alignment.Center) {
+        val frame = thumbnail
+        if (frame != null) {
+            Image(
+                bitmap = frame.asImageBitmap(),
+                contentDescription = "Selected video preview",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.Movie,
+                contentDescription = "Selected video",
+                tint = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.size(64.dp)
+            )
+        }
+        durationMs?.let { ms ->
+            val seconds = (ms / 1000).toInt()
+            Text(
+                text = "%d:%02d".format(seconds / 60, seconds % 60),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
         }
     }
 }

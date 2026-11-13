@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +26,7 @@ import com.example.R
 import com.example.data.model.ScanResult
 import com.example.ui.components.ScanHistoryCard
 import com.example.ui.theme.CardSurfaceCream
+import com.example.ui.theme.PrimaryButtonYellow
 import com.example.ui.theme.TextPrimaryDarkBrown
 import com.example.ui.theme.WarmCreamBackground
 import com.example.viewmodel.HistoryUIState
@@ -33,7 +35,7 @@ import com.example.viewmodel.ScanViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
     historyViewModel: HistoryViewModel,
@@ -44,6 +46,7 @@ fun HistoryScreen(
 ) {
     val scanHistory by historyViewModel.scanHistory.collectAsStateWithLifecycle()
     val uiState by historyViewModel.uiState.collectAsState()
+    val isRefreshing by historyViewModel.isRefreshing.collectAsState()
     // Grouping helper
     val groupedHistory = rememberGroupedHistory(scanHistory)
 
@@ -59,9 +62,20 @@ fun HistoryScreen(
                 contentDescription = "Back")
         }
 
-        when (uiState) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { historyViewModel.refresh() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+        when (val state = uiState) {
             is HistoryUIState.Loading -> {
-                CircularProgressIndicator(color = TextPrimaryDarkBrown)
+                CircularProgressIndicator(
+                    color = TextPrimaryDarkBrown,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+            is HistoryUIState.Error -> {
+                HistoryErrorState(message = state.message, onRetry = { historyViewModel.refresh() })
             }
             is HistoryUIState.Success -> {
                 LazyColumn(
@@ -96,6 +110,36 @@ fun HistoryScreen(
             is HistoryUIState.Empty -> {
                 EmptyHistoryState()
             }
+        }
+        }
+    }
+}
+
+@Composable
+private fun HistoryErrorState(message: String, onRetry: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = message,
+            color = TextPrimaryDarkBrown,
+            fontSize = 16.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = onRetry,
+            modifier = Modifier.testTag("history_retry_button"),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = PrimaryButtonYellow,
+                contentColor = TextPrimaryDarkBrown
+            )
+        ) {
+            Text("Retry", fontWeight = FontWeight.Bold)
         }
     }
 }

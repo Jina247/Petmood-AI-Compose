@@ -17,13 +17,16 @@ sibling directory. Most features touch both.
 
 **Android** (this repo): Kotlin 2.2.10, Jetpack Compose (BOM 2024.09.00), MVVM. Retrofit 2.12.0 +
 **Moshi** 1.15.2 for networking (not Gson — see Known issues). Coroutines/`StateFlow` for async + UI
-state. Navigation Compose 2.8.9. CameraX 1.5.0 (`camera2`/`core`/`lifecycle`/`view` — `camera-video` not
-yet added). Coil for images. `minSdk 24`, `targetSdk`/`compileSdk 36`. No DI framework — repositories/
-ViewModels are hand-wired in `MainActivity.onCreate()` (see Known issues, this is also the rotation bug).
+state. Navigation Compose 2.8.9. CameraX 1.5.0 (`camera2`/`core`/`lifecycle`/`view`/`video`). Coil for images. Firebase Cloud
+Messaging (`firebase-messaging`) for scan-result push notifications. (`gson`/`converter-gson` are
+still declared in `build.gradle.kts` but unused, and the Firebase BOM is declared twice — cleanup
+candidates.) `minSdk 24`, `targetSdk`/`compileSdk 36`. No DI framework — repositories/
+ViewModels are hand-wired in `MainActivity` via `by viewModels { viewModelFactory { initializer { … } } }`
+(Activity-scoped, so they survive rotation/config changes).
 
 **Backend** (`../FastAPIProject`): FastAPI 0.136.3, SQLAlchemy 2.0.50 + Alembic 1.18.5, **PostgreSQL**
 (via `psycopg2-binary`) — not SQLite (see Known issues), `python-jose` for JWT, `pwdlib` for password
-hashing, `google-genai` 2.16.0 for Gemini. Python 3.11 (Azure runtime) / 3.13 (local `.venv`).
+hashing, `google-genai` 2.16.0 for Gemini, `firebase-admin` for FCM pushes. Python 3.11 (Azure runtime) / 3.13 (local `.venv`).
 
 ## Architecture
 
@@ -42,6 +45,18 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 - Scan flow is async: `POST /pets/{id}/scans` returns `status: "processing"` immediately; a background
   task uploads the video to Gemini, polls until it's `ACTIVE`, and writes `mood_result`/`confidence`/
   `summary`/`suggestions`/`error_message` back onto the `Scan` row. Client polls `GET /pets/{id}/scans/{scan_id}`.
+  When the task finishes it also sends an FCM push (`firebase_client.send_scan_notification`, never
+  raises) to the user's stored `fcm_token`, with `pet_id`/`scan_id` as the data payload.
+- Push notifications: the client registers its FCM token via `PATCH /auth/fcm-token` after login/
+  register, on `onNewToken`, and on every launch while logged in (`AuthViewModel.syncFcmToken()` from
+  the routing gate; no-op once synced), and clears it (`fcm_token: null`) on logout. Tapping a push opens
+  the app with a `scan_id` intent extra (`MainActivity.EXTRA_DEEPLINK_SCAN_ID`, which must stay
+  equal to the backend's data key — in the background Android builds the launch intent itself
+  from the data payload, so `PetMoodFirebaseMessagingService` never runs). The backend stores **one**
+  `fcm_token` per user: the last device to log in gets pushes, and logging out anywhere clears it.
+- `MainActivity`'s `"routing"` destination is the start destination and the single place that
+  decides where a logged-in user lands (login / pet setup / FCM deep-linked result / resuming a scan
+  left `processing` / home). Login and register success navigate to `"routing"`, not to a screen.
 - A scan's video is always required; photos (0-3) and a text description are optional extras attached to
   the *same* `POST /pets/{id}/scans` request (multipart fields `file`/`photos`/`description`) — **not** a
   separate endpoint or flow. `gemini_client.analyze_pet_scan()` is the one entry point: it combines all
@@ -56,20 +71,32 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 ## Key files
 
 **Android**
-- `MainActivity.kt` — builds the single Retrofit/Moshi `ApiService`, constructs all repositories/
+- `MainActivity.kt` — gets the `ApiService` from `data/api/ApiServiceFactory.kt`'s `buildApiService()`
+  (also used by the FCM service, so there's one construction path), constructs all repositories/
   ViewModels, owns the entire `NavHost` (all screen routes and their transitions live here, not in the
-  screens themselves).
+  screens themselves). Also owns the app-wide `SnackbarHostState` (use it for errors instead of Toasts)
+  and holds the `core-splashscreen` splash while the `"routing"` gate decides (max 2s).
 - `viewmodel/ScanViewModel.kt` — upload + poll state machine (`ScanUiState`: Idle/Uploading/Analysing/
   Success/Error); also owns `petProfile` (must be explicitly refreshed via `refreshPetProfile()`, see
   Known issues) and the optional scan extras (`selectedPhotos`/`description`, mutated via
   `onPhotosPicked`/`removePhoto`/`updateDescription`, capped at `MAX_PHOTOS` = 3) — snapshotted and
   cleared at the start of each submission so the next scan starts blank regardless of outcome.
-- `ui/screens/ScannerScreen.kt` — record/pick video (unchanged: still auto-uploads on select, no review
-  step) plus the optional supporting-photos thumbnail row (add/remove/tap-to-zoom) and description field.
+- `ui/screens/ScannerScreen.kt` — record (via `ui/components/CameraPreview.kt`, 30s cap) or pick video
+  (goes into `ScanViewModel.pendingVideo` first: a review card with thumbnail/duration and an
+  "Analyse" button calls `submitPendingVideo()`, so photos/description can be added in any order)
+  plus the optional supporting-photos thumbnail row (add/remove/tap-to-zoom) and description field.
   This is the only place users add photos/description — there's no separate screen for it.
 - `viewmodel/{Auth,Pet,History}ViewModel.kt` — one sealed `*UiState` per screen area, each own
-  `StateFlow`.
-- `session/SessionManager.kt` — JWT + user info in `SharedPreferences`; `init(context)` must run before
+  `StateFlow`. `HistoryViewModel` loads via explicit `refresh()` (called on pet change, Home/History
+  entry, pull-to-refresh, and when a scan leaves `Analysing`), not a one-shot `stateIn` flow.
+- `ui/screens/AnalysingScreen.kt` — no fake percentage (backend only reports "processing"); after the
+  upload, "Notify me when it's ready" returns to Home while polling continues in `ScanViewModel`.
+- `fcm/PetMoodFirebaseMessagingService.kt` — `onNewToken` (cache + sync token) and
+  `onMessageReceived` (foreground-only: shows the notification itself). `ui/components/
+  NotificationPermission.kt` — POST_NOTIFICATIONS request, triggered from the `home` route.
+- `session/SessionManager.kt` — JWT + user info + FCM token/synced flag in `SharedPreferences`
+  (`clearSession()` wipes all of it, so `AuthRepository.syncFcmTokenIfNeeded()` re-fetches the token
+  from Firebase when the cache is empty); `init(context)` must run before
   first use (called in `MainActivity.onCreate`).
 - `data/api/ApiService.kt` — single Retrofit interface for all endpoints (auth/pets/scans) + the request/
   response DTOs for auth. `data/api/AuthInterceptor.kt` attaches the bearer token and force-logs-out on
@@ -84,22 +111,28 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 **Backend** (`../FastAPIProject`)
 - `main.py` — app + lifespan (runs migrations, warns if `GEMINI_API_KEY` unset).
 - `config.py` — all env vars: `SECRET_KEY`, `DATABASE_URL` (sqlite fallback for local dev only),
-  `GEMINI_API_KEY`. `ALGORITHM` is hardcoded `"HS256"`, **not** an env var, despite looking like one.
+  `GEMINI_API_KEY`, and the Firebase service-account key as either `FIREBASE_CRED_JSON` (the JSON
+  content — what Azure uses, since the key file is gitignored and never deployed) or `FIREBASE_CRED`
+  (a file path, for local dev). `ALGORITHM` is hardcoded `"HS256"`, **not** an env var, despite looking like one.
 - `routers/auth.py` — `/auth/register`, `/auth/login`, `/auth/users/me` (note the prefix — see Known
   issues), JWT issuance.
 - `routers/pets.py` — CRUD, owner-scoped (`Pet.owner_id == current_user.id`) on every query.
 - `routers/scans.py` — single `create_scan` handler validates the required video (content-type allowlist,
   50MB cap) plus optional `photos` (≤3, content-type allowlist, 4MB/photo cap) and `description` (≤1000
   chars), shared 5/hour rate limit, kicks off the background `analyze_scan` task.
-- `gemini_client.py` — all Gemini interaction; `analyze_pet_scan(video_path, photo_paths, description)` is
+- `firebase_client.py` — Firebase Admin init + `send_scan_notification()`. Soft-fails: with no key it
+  logs a startup warning and silently skips every push, so check the startup log for
+  `push notifications enabled` before debugging the client.
+- `gemini_client.py` — all Gemini interaction (model fallback list `GEMINI_MODELS` on 429, retry with
+  backoff on 503, owner-friendly error messages); `analyze_pet_scan(video_path, photo_paths, description)` is
   the one entry point (no separate video-only/photo-only functions) — raises `GeminiAnalysisError` (caught
   in `scans.py`'s background task and written to `Scan.error_message`).
 - `database/models.py` — `User`/`Pet`/`Scan`, UUID string PKs, native Postgres enums for `gender` and
   `status`. `Scan` also has nullable `description` (str), `photo_paths` (JSON list), `suggestions` (JSON
   list) columns — no `media_type`/discriminator column; a scan's "kind" is just whatever's populated.
 - `dependencies.py` — `get_current_user` (JWT bearer decode + DB lookup).
-- `alembic/versions/` — 3 migrations so far; baseline schema, `error_message`/`updated_at` on scans, and
-  `description`/`photo_paths`/`suggestions` on scans.
+- `alembic/versions/` — baseline schema, `error_message`/`updated_at` on scans,
+  `description`/`photo_paths`/`suggestions` on scans, plus `fcm_token` on users.
 
 ## Commands
 
@@ -155,24 +188,37 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
   `GeminiAnalysisError` message regardless of input — check https://ai.dev/rate-limit before assuming a
   code regression if many scans in a row fail identically.
 
+- **`/users/me` path mismatch**: `ApiService` called `users/me` but the route is `/auth/users/me`, so
+  login/register always returned failure. Fixed (`@GET("auth/users/me")`).
+- **FCM tap in background opened Home, not the scan**: the client read a `deeplink_scan_id` extra but
+  Android's tray notification uses the backend's `scan_id` key. Key unified to `scan_id`.
+- **No pushes after logout → login**: `clearSession()` wiped the cached FCM token and `onNewToken`
+  doesn't refire, so nothing got registered. `syncFcmTokenIfNeeded()` now fetches it from Firebase.
+- **ViewModels didn't survive configuration changes**: plain constructors in `onCreate()` meant
+  rotation created a fresh `ScanViewModel`, orphaning in-flight polls. Now `by viewModels {}`;
+  `ScanViewModel` also only keeps `applicationContext` for uploads. Verified on an emulator (login
+  form text survives rotation).
+- **Pushes were never sent in production**: Azure had no `FIREBASE_CRED` (the key file is gitignored,
+  so GitHub deploys can't ship it), so Firebase never initialized and every push was skipped with only
+  a startup warning. Fixed by `FIREBASE_CRED_JSON` (set on Azure) — takes effect once backend branch
+  `feature/fcm-deep-link-friendly-errors` is merged and deployed. Tokens were registering fine.
+- **Token sync only ran at login/token rotation**: one failed attempt meant the server never got the
+  token. Now also retried on every launch.
+- **Raw Gemini errors reached owners** (including a server file path): every `GeminiAnalysisError`
+  message is shown in the app and the "failed" push, so all are plain text now; raw errors are logged.
+
 ### Currently open
 
-- **`/users/me` path mismatch**: `ApiService.kt`'s `getCurrentUserInfo()` calls `@GET("users/me")`
-  (relative → `{baseUrl}/users/me`), but the backend route is registered under the `/auth`-prefixed
-  router, so it's actually `/auth/users/me`. Confirmed live: `/users/me` → 404, `/auth/users/me` → 200.
-  Since `AuthRepository.login()`/`.register()` call `getCurrentUserInfo()` immediately after
-  login/register and wrap both calls in one try/catch, **this 404 currently makes login/register always
-  return `Result.failure`**, even though the account and token are created successfully. One-line fix:
-  `@GET("auth/users/me")`.
-- **ViewModels don't survive configuration changes**: `MainActivity.onCreate()` constructs
-  `ScanViewModel`/etc. with plain constructors instead of `ViewModelProvider`/`viewModel()`. Rotation
-  destroys/recreates the Activity, which creates a brand-new `ScanViewModel` from scratch, orphaning any
-  in-flight scan poll (it keeps running against the old, now-unobserved instance — the result lands in
-  History but the UI never reflects it, `AnalysingScreen`'s progress bar sticks). Needs a proper
-  `ViewModelProvider.Factory` + `viewModel()` composable usage; scoped but not yet implemented.
-- Live camera recording (`ScannerScreen`'s record button) is still a mock — creates an empty 0-byte file
-  and uploads it, which Gemini correctly rejects. Only the gallery-picker path uploads real video.
-  `camera-video` dependency not yet added.
+- **FCM deep link when the app is still running in the background**: `MainActivity` uses the default
+  `standard` launch mode and reads the deep-link extra only in `onCreate`. If tapping a tray
+  notification just brings the existing task forward, the extra is never read. Not yet verified on
+  a device; a fix would be `singleTop` + `onNewIntent` re-entering `"routing"`.
+- **Push delivery not yet verified on a device.** Server side is verified locally (the key initializes
+  and Firebase accepts sends to the app's token, so key and app share a project). The
+  `Medium_Phone_API_36.0` emulator can't receive any FCM (its Play Services check-in/cloud-messaging
+  service is broken), so test on a real phone: with the app installed and debuggable, the token is in
+  `shared_prefs/com.google.android.gms.appid.xml` (`|T|…|*` key), and the backend's
+  `send_scan_notification()` can be run locally against it.
 
 ## Conventions
 
