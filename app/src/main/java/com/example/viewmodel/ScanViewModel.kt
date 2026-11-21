@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.PetProfile
+import com.example.data.api.ApiException
+import com.example.data.api.UploadFile
 import com.example.data.model.ScanResult
 import com.example.data.repository.PetRepository
 import com.example.data.repository.ScanRepository
@@ -14,7 +16,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import retrofit2.HttpException
 import java.io.File
 import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
@@ -272,13 +273,18 @@ class ScanViewModel(
             return
         }
 
-        val uploadResult = scanRepository.uploadScan(petId, file, mimeType, preparedPhotos, descriptionToUpload)
+        val uploadResult = scanRepository.uploadScan(
+            petId,
+            UploadFile(file.absolutePath, file.name, mimeType),
+            preparedPhotos.map { (photo, photoMime) -> UploadFile(photo.absolutePath, photo.name, photoMime) },
+            descriptionToUpload
+        )
         file.delete() // temp copies no longer needed either way
         preparedPhotos.forEach { it.first.delete() }
 
         val uploaded = uploadResult.getOrElse { e ->
-            val httpBody = (e as? HttpException)?.response()?.errorBody()?.string()
-            Log.e(TAG, "Upload failed (petId=$petId, code=${(e as? HttpException)?.code()}, body=$httpBody)", e)
+            val apiError = e as? ApiException
+            Log.e(TAG, "Upload failed (petId=$petId, code=${apiError?.code}, body=${apiError?.body})", e)
             _scanUiState.value = ScanUiState.Error(mapUploadError(e))
             return
         }
@@ -329,12 +335,14 @@ class ScanViewModel(
     }
 
     private fun mapUploadError(e: Throwable): String = when (e) {
-        is HttpException if e.code() == 400 ->
+        is ApiException if e.code == 400 ->
             "Upload rejected — check that your video is MP4/MOV/WEBM/MPEG/3GP and under 50MB, " +
                 "and any attached photos are JPEG/PNG/WEBP and under 4MB each."
 
-        is HttpException if e.code() == 429 ->
+        is ApiException if e.code == 429 ->
             "You've reached the limit of 5 scans per hour. Please try again later."
+
+        is ApiException -> "Upload failed. Please try again in a moment."
 
         else -> e.message ?: "Upload failed. Please check your connection and try again."
     }

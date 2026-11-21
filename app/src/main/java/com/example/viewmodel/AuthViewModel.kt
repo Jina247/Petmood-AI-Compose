@@ -3,6 +3,7 @@ package com.example.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.repository.AuthRepository
+import com.example.data.api.ApiException
 import com.example.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,9 +56,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
                 _uiState.value = AuthUiState.Success
                 _isLoggedIn.value = true
             } else {
-                _uiState.value = AuthUiState.Error(
-                    result.exceptionOrNull()?.message ?: "An unexpected error occurred"
-                )
+                _uiState.value = AuthUiState.Error(friendlyError(result.exceptionOrNull()))
             }
         }
     }
@@ -84,9 +83,7 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
             if (result.isSuccess) {
                 _uiState.value = AuthUiState.Success
             } else {
-                _uiState.value = AuthUiState.Error(
-                    result.exceptionOrNull()?.message ?: "An unexpected error occurred"
-                )
+                _uiState.value = AuthUiState.Error(friendlyError(result.exceptionOrNull()))
             }
         }
     }
@@ -118,5 +115,10 @@ class AuthViewModel(private val authRepository: AuthRepository) : ViewModel() {
 
     fun getUserName(): String {
         return authRepository.getCurrentUserName()
+    }
+
+    private fun friendlyError(e: Throwable?): String = when (e) {
+        is ApiException -> e.detail ?: "Something went wrong on our side. Please try again."
+        else -> "Couldn't reach the server. Check your connection and try again."
     }
 }

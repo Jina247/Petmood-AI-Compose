@@ -1,5 +1,6 @@
 package com.example.data.repository
 
+import com.example.data.api.ApiException
 import com.example.data.api.ApiService
 import com.example.data.api.PetCreate
 import com.example.data.model.PetProfile
@@ -19,9 +20,8 @@ class PetRepository(private val apiService: ApiService) {
             apiService.createPet(
                 PetCreate(name = name, age = age, pet_type = petType, gender = gender)
             )
-        } catch (e: retrofit2.HttpException) {
-            val errorBody = e.response()?.errorBody()?.string()
-            println("PetMood Error → $errorBody")
+        } catch (e: ApiException) {
+            println("PetMood Error → ${e.body}")
             throw e
         }
     }

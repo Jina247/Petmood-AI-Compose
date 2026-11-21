@@ -5,12 +5,16 @@ import com.example.data.api.FcmTokenRequest
 import com.example.data.api.LoginRequest
 import com.example.data.api.RegisterRequest
 import com.example.session.SessionManager
-import com.google.firebase.messaging.FirebaseMessaging
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
-class AuthRepository(private val api: ApiService) {
+/** Gets this device's push token from the platform (Firebase on Android). */
+fun interface PushTokenProvider {
+    suspend fun fetchToken(): String
+}
+
+class AuthRepository(
+    private val api: ApiService,
+    private val pushTokenProvider: PushTokenProvider
+) {
 
     suspend fun login(email: String, password: String): Result<Unit> {
         return try {
@@ -64,18 +68,11 @@ class AuthRepository(private val api: ApiService) {
             // The cached token is gone after logout (clearSession wipes prefs) and
             // onNewToken won't fire again for the same token, so ask Firebase directly.
             val token = SessionManager.getFcmToken()
-                ?: fetchFcmToken().also { SessionManager.saveFcmToken(it) }
+                ?: pushTokenProvider.fetchToken().also { SessionManager.saveFcmToken(it) }
             api.updateFcmToken(FcmTokenRequest(fcmToken = token))
             SessionManager.syncFcmToken(true)
         } catch (e: Exception) {
             // leave unsynced — next app launch, login, or token rotation retries
-        }
-    }
-
-    private suspend fun fetchFcmToken(): String = suspendCancellableCoroutine { cont ->
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) cont.resume(task.result)
-            else cont.resumeWithException(task.exception ?: IllegalStateException("No FCM token"))
         }
     }
 

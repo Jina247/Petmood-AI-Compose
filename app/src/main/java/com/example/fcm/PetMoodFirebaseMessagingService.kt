@@ -34,7 +34,7 @@ class PetMoodFirebaseMessagingService : FirebaseMessagingService() {
         SessionManager.saveFcmToken(token)  // also resets the synced flag
         if (SessionManager.isLoggedIn()) {
             CoroutineScope(Dispatchers.IO).launch {
-                val authRepository = AuthRepository(buildApiService(applicationContext))
+                val authRepository = AuthRepository(buildApiService(applicationContext), FirebasePushTokenProvider)
                 authRepository.syncFcmTokenIfNeeded()
             }
         }

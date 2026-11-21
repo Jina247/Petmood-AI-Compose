@@ -1,25 +1,24 @@
 package com.example
 
+import com.example.data.api.ApiException
+import com.example.data.api.FcmTokenRequest
+import com.example.data.api.PetMoodJson
+import com.example.data.model.Gender
+import com.example.data.model.PetProfile
 import com.example.data.model.ScanResult
-import com.squareup.moshi.Moshi
-import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Verifies ScanResult deserializes correctly for both the current response shape (video-required
- * scan, optionally carrying photos/description and always eligible for suggestions) and an older
- * response shape missing those newer fields, using the exact same Moshi setup (reflection-based
- * KotlinJsonAdapterFactory) as MainActivity's Retrofit client.
+ * Verifies the models parse real backend responses with the same JSON setup the API client
+ * uses ([PetMoodJson]): the current scan shape, an older one missing newer fields, and fields
+ * the models don't declare.
  */
-class ScanResultMoshiTest {
+class ScanResultJsonTest {
 
-    private val adapter = Moshi.Builder()
-        .add(KotlinJsonAdapterFactory())
-        .build()
-        .adapter(ScanResult::class.java)
+    private fun parse(json: String): ScanResult = PetMoodJson.decodeFromString(json)
 
     @Test
     fun `parses a completed scan response with description and suggestions`() {
@@ -42,7 +41,7 @@ class ScanResultMoshiTest {
             }
         """.trimIndent()
 
-        val result = adapter.fromJson(json)!!
+        val result = parse(json)
 
         assertEquals("complete", result.status)
         assertEquals("anxious", result.mood)
@@ -67,10 +66,49 @@ class ScanResultMoshiTest {
             }
         """.trimIndent()
 
-        val result = adapter.fromJson(json)!!
+        val result = parse(json)
 
         assertEquals("playful", result.mood)
         assertNull(result.description)
         assertNull(result.suggestions)
+    }
+
+    @Test
+    fun `ignores fields the model doesn't declare and nulls for defaulted fields`() {
+        val json = """
+            {
+                "id": "s1",
+                "status": "processing",
+                "pet_id": null,
+                "photo_paths": ["/tmp/a.jpg"],
+                "updated_at": "2026-01-01T00:00:00"
+            }
+        """.trimIndent()
+
+        val result = parse(json)
+
+        assertEquals("processing", result.status)
+        assertEquals("", result.petId)
+    }
+
+    @Test
+    fun `parses a pet with its lowercase gender`() {
+        val pet = PetMoodJson.decodeFromString<PetProfile>(
+            """{"id":"p1","name":"Milo","pet_type":"dog","age":3,"gender":"male","owner_id":"u1"}"""
+        )
+        assertEquals(Gender.male, pet.gender)
+        assertEquals("dog", pet.petType)
+    }
+
+    @Test
+    fun `logout sends fcm_token as an explicit null`() {
+        assertEquals("""{"fcm_token":null}""", PetMoodJson.encodeToString(FcmTokenRequest(null)))
+    }
+
+    @Test
+    fun `api errors expose the backend's message but not validation lists`() {
+        assertEquals("Incorrect email or password", ApiException(401, """{"detail":"Incorrect email or password"}""").detail)
+        assertNull(ApiException(422, """{"detail":[{"loc":["body","email"],"msg":"bad"}]}""").detail)
+        assertNull(ApiException(500, "Internal Server Error").detail)
     }
 }

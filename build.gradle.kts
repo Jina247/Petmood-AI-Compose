@@ -5,5 +5,8 @@ plugins {
   alias(libs.plugins.google.devtools.ksp) apply false
   alias(libs.plugins.roborazzi) apply false
   alias(libs.plugins.secrets) apply false
+  alias(libs.plugins.kotlin.multiplatform) apply false
+  alias(libs.plugins.kotlin.serialization) apply false
+  alias(libs.plugins.android.kotlin.multiplatform.library) apply false
   id("com.google.gms.google-services") version "4.5.0" apply false
 }

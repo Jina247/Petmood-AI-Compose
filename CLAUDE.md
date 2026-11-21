@@ -15,12 +15,11 @@ sibling directory. Most features touch both.
 
 ## Tech stack
 
-**Android** (this repo): Kotlin 2.2.10, Jetpack Compose (BOM 2024.09.00), MVVM. Retrofit 2.12.0 +
-**Moshi** 1.15.2 for networking (not Gson — see Known issues). Coroutines/`StateFlow` for async + UI
+**Android** (this repo): Kotlin 2.2.10, Jetpack Compose (BOM 2024.09.00), MVVM. **Ktor 3.3.3** client +
+**kotlinx.serialization** 1.9.0 for networking (Retrofit/Moshi/Gson are gone — see "Kotlin Multiplatform" below). Coroutines/`StateFlow` for async + UI
 state. Navigation Compose 2.8.9. CameraX 1.5.0 (`camera2`/`core`/`lifecycle`/`view`/`video`). Coil for images. Firebase Cloud
-Messaging (`firebase-messaging`) for scan-result push notifications. (`gson`/`converter-gson` are
-still declared in `build.gradle.kts` but unused, and the Firebase BOM is declared twice — cleanup
-candidates.) `minSdk 24`, `targetSdk`/`compileSdk 36`. No DI framework — repositories/
+Messaging (`firebase-messaging`) for scan-result push notifications. (The Firebase BOM is declared
+twice in `app/build.gradle.kts` — cleanup candidate.) `minSdk 24`, `targetSdk`/`compileSdk 36`. No DI framework — repositories/
 ViewModels are hand-wired in `MainActivity` via `by viewModels { viewModelFactory { initializer { … } } }`
 (Activity-scoped, so they survive rotation/config changes).
 
@@ -31,7 +30,7 @@ hashing, `google-genai` 2.16.0 for Gemini, `firebase-admin` for FCM pushes. Pyth
 ## Architecture
 
 ```
-Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
+Android app (Ktor + kotlinx.serialization in :shared, JWT in SessionManager/SharedPreferences)
    → FastAPI on Azure App Service "PetmoodAI-AU", resource group petmood-rg, region australiaeast
        → Azure Postgres Flexible Server "petmoodai-pg" (db "petmood")
        → Google Gemini API (google-genai, model gemini-flash-latest) — called from a FastAPI
@@ -68,10 +67,37 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 - The app supports exactly **one pet per account** today — no pet-selection UI exists. Don't add a
   `currentPetId`-style side channel; resolve the pet directly from `ScanViewModel.petProfile`.
 
+## Kotlin Multiplatform (iOS port in progress)
+
+Plan: move to KMP + Compose Multiplatform in phases, keeping Android working after each:
+1. **Done** — networking, models, session, repositories in the `:shared` module.
+2. ViewModels → shared (`ScanViewModel`'s `Uri`/`File`/`Context` handling behind a platform interface).
+3. Screens/NavHost → shared `App()` composable (camera, pickers, thumbnail, notification permission stay per-platform).
+4. iOS app (`iosApp` Xcode project, camera/pickers, Firebase iOS SDK + APNs key).
+5. Backend: no changes needed.
+
+`:shared` (`shared/`, `com.android.kotlin.multiplatform.library` plugin — AGP 9 needs it instead of
+`com.android.library`) targets Android, `iosArm64`, `iosSimulatorArm64`. Packages are unchanged
+(`com.example.data.*`, `com.example.session`), so app imports didn't change.
+- `data/api/ApiService.kt` — Ktor-based class with one function per endpoint; paths identical to the
+  old Retrofit interface (keep the trailing slash on `pets/`, FastAPI 307s without it). Uploads stream
+  `UploadFile(path, fileName, mimeType)` parts; each part needs its own Content-Type (backend allowlist).
+- `data/api/ApiClient.kt` — `createApiService(onSessionExpired)`, `PetMoodJson` (`ignoreUnknownKeys`,
+  `coerceInputValues`; nulls stay explicit because logout sends `fcm_token: null`), and `ApiException(code,
+  body)` with `.detail` (the backend's human-readable message). Never show `body`/`message` to owners.
+  A 401 while logged in clears the session and calls `onSessionExpired` once (2s debounce).
+  **Don't name a shared file the same as an app file in the same package** (both compile to e.g.
+  `ApiServiceFactoryKt` and one hides the other) — the app's factory is `ApiServiceFactory.kt`.
+- `session/SessionManager.kt` — on `multiplatform-settings`; Android `SessionManager.init(context)`
+  (androidMain extension) uses the same `petmood_prefs` file, iOS uses `initSessionManager()`.
+- `data/repository/AuthRepository.kt` takes a `PushTokenProvider` (Android: `fcm/FirebasePushTokenProvider`).
+- Verify: `./gradlew :app:compileDebugKotlin :shared:compileKotlinIosSimulatorArm64` (the iOS klib compiles
+  without full Xcode; linking a framework/app needs Xcode, which isn't installed on this Mac yet).
+
 ## Key files
 
 **Android**
-- `MainActivity.kt` — gets the `ApiService` from `data/api/ApiServiceFactory.kt`'s `buildApiService()`
+- `MainActivity.kt` — gets the `ApiService` from the app's `data/api/ApiServiceFactory.kt` `buildApiService()`
   (also used by the FCM service, so there's one construction path), constructs all repositories/
   ViewModels, owns the entire `NavHost` (all screen routes and their transitions live here, not in the
   screens themselves). Also owns the app-wide `SnackbarHostState` (use it for errors instead of Toasts)
@@ -98,13 +124,12 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
   (`clearSession()` wipes all of it, so `AuthRepository.syncFcmTokenIfNeeded()` re-fetches the token
   from Firebase when the cache is empty); `init(context)` must run before
   first use (called in `MainActivity.onCreate`).
-- `data/api/ApiService.kt` — single Retrofit interface for all endpoints (auth/pets/scans) + the request/
-  response DTOs for auth. `data/api/AuthInterceptor.kt` attaches the bearer token and force-logs-out on
-  401.
+- `data/api/ApiServiceFactory.kt` (app) — `buildApiService(context)`: the shared client plus the Android
+  "session expired" restart. Endpoints/DTOs/repositories/models/session now live in `:shared` (above).
 - `data/repository/{Auth,Pet,Scan}Repository.kt` — thin wrappers; `ScanRepository` returns `Result<T>`,
   the other two mostly let exceptions propagate (inconsistent on purpose vs. by design — see Known
   issues if asked to add a new repository method).
-- `data/model/{PetProfile,ScanResult}.kt` — Moshi `@Json`-annotated models; `ScanResult` doubles as both
+- `data/model/{PetProfile,ScanResult}.kt` (shared) — `@Serializable`/`@SerialName` models; `ScanResult` doubles as both
   the wire model and the UI model (renamed fields like `mood`/`timestamp` vs. backend's `mood_result`/
   `created_at`); also carries `description`/`suggestions` (both nullable — absent on older responses).
 
@@ -139,8 +164,8 @@ Android app (Retrofit/Moshi, JWT in SessionManager/SharedPreferences)
 **Android** (from repo root):
 - Compile check (fast): `./gradlew :app:compileDebugKotlin`
 - Full build: `./gradlew build`
-- Unit tests: `./gradlew test` — currently just template boilerplate (`ExampleUnitTest`,
-  `ExampleRobolectricTest`, `GreetingScreenshotTest`), no real app tests exist yet.
+- Unit tests: `./gradlew test` — `ScanResultJsonTest` (model parsing with `PetMoodJson`, `ApiException.detail`)
+  plus template boilerplate (`ExampleRobolectricTest` fails: it expects the old app name).
 - Instrumented tests (needs device/emulator): `./gradlew connectedAndroidTest`
 
 **Backend** (from `../FastAPIProject`, `.venv` already present):

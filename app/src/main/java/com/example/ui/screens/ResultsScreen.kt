@@ -202,7 +202,7 @@ fun ResultsScreen(
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Spacer(modifier = Modifier.height(8.dp))
-                            scan.suggestions.forEach { suggestion ->
+                            scan.suggestions.orEmpty().forEach { suggestion ->
                                 Row(modifier = Modifier.padding(bottom = 6.dp)) {
                                     Text(
                                         text = "•",

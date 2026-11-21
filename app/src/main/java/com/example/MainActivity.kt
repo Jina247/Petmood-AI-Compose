@@ -38,7 +38,9 @@ import com.example.data.api.buildApiService
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.PetRepository
 import com.example.data.repository.ScanRepository
+import com.example.fcm.FirebasePushTokenProvider
 import com.example.session.SessionManager
+import com.example.session.init
 import com.example.ui.components.BottomNavBar
 import com.example.ui.components.rememberNotificationPermissionState
 import com.example.ui.screens.*
@@ -99,7 +101,7 @@ class MainActivity : ComponentActivity() {
         // new ones. Their factories only run the first time; the repositories they capture
         // live as long as the ViewModels do.
         val authViewModel: AuthViewModel by viewModels {
-            viewModelFactory { initializer { AuthViewModel(AuthRepository(apiService)) } }
+            viewModelFactory { initializer { AuthViewModel(AuthRepository(apiService, FirebasePushTokenProvider)) } }
         }
         val petViewModel: PetViewModel by viewModels {
             viewModelFactory { initializer { PetViewModel(PetRepository(apiService)) } }
